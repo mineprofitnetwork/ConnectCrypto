@@ -1,0 +1,106 @@
+
+{
+  "entities": {
+    "UserProfile": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserProfile",
+      "type": "object",
+      "description": "Represents a user account on the ConnectCrypto platform.",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "username": { "type": "string" },
+        "role": { "type": "string", "enum": ["client", "trader", "admin"] },
+        "balance": { "type": "number", "description": "The current wallet balance in fiat." },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "email", "username", "role", "isActive", "createdAt"]
+    },
+    "TraderBuyOffer": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "TraderBuyOffer",
+      "type": "object",
+      "description": "An offer created by a Trader to buy cryptocurrency.",
+      "properties": {
+        "id": { "type": "string" },
+        "traderId": { "type": "string" },
+        "traderUsername": { "type": "string" },
+        "cryptoAssetId": { "type": "string" },
+        "network": { "type": "string" },
+        "fiatCurrency": { "type": "string" },
+        "fixedPricePerCrypto": { "type": "number" },
+        "status": { "type": "string", "enum": ["Active", "Closed"] },
+        "walletAddress": { "type": "string" },
+        "walletQrCid": { "type": "string" },
+        "iconCid": { "type": "string" }
+      },
+      "required": ["traderId", "cryptoAssetId", "status"]
+    },
+    "TradeTransaction": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "TradeTransaction",
+      "type": "object",
+      "description": "Represents an active or completed trade.",
+      "properties": {
+        "id": { "type": "string" },
+        "clientId": { "type": "string" },
+        "clientUsername": { "type": "string" },
+        "traderId": { "type": "string" },
+        "cryptoAssetId": { "type": "string" },
+        "cryptoAmount": { "type": "number" },
+        "fiatAmount": { "type": "number" },
+        "fiatCurrency": { "type": "string" },
+        "status": { "type": "string", "enum": ["AwaitingCrypto", "Paid", "Success", "Cancelled"] },
+        "initiationTime": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientId", "traderId", "status"]
+    },
+    "WithdrawalRequest": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "WithdrawalRequest",
+      "type": "object",
+      "description": "A request by a user to withdraw fiat funds from their balance.",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "gatewayId": { "type": "string" },
+        "gatewayDetails": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string" },
+            "name": { "type": "string" },
+            "detail": { "type": "string" }
+          }
+        },
+        "status": { "type": "string", "enum": ["Pending", "Success", "Cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "amount", "status", "createdAt"]
+    }
+  },
+  "auth": {
+    "providers": ["password", "anonymous"]
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/backend/entities/UserProfile" },
+      "description": "Stores user profiles."
+    },
+    "/trader_buy_offers/{offerId}": {
+      "schema": { "$ref": "#/backend/entities/TraderBuyOffer" },
+      "description": "Marketplace offers."
+    },
+    "/trade_transactions/{txId}": {
+      "schema": { "$ref": "#/backend/entities/TradeTransaction" },
+      "description": "P2P trade activities."
+    },
+    "/withdrawals/{withdrawalId}": {
+      "schema": { "$ref": "#/backend/entities/WithdrawalRequest" },
+      "description": "User withdrawal requests."
+    }
+  }
+}

@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 263.4 70% 50.4%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 263.4 70% 50.4%;
+    --radius: 1.5rem;
+    
+    /* Custom Spacing & Hierarchy Tokens */
+    --hierarchy-gap-sm: 0.75rem;
+    --hierarchy-gap-md: 1.25rem;
+    --hierarchy-gap-lg: 2rem;
+  }
+}
+
+@layer base {
+  html, body {
+    @apply h-full w-full overflow-hidden;
+    /* Adaptive font scaling: scales between 14px and 18px based on viewport width */
+    font-size: clamp(14px, 1.2vw, 18px);
+  }
+  
+  body {
+    @apply bg-background text-foreground font-body antialiased select-none;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+    letter-spacing: -0.01em;
+    /* Fixed viewport experience: no body scrolling */
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+  }
+  
+  * {
+    @apply border-border outline-none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-headline tracking-tight font-bold;
+  }
+  h1 { @apply text-3xl md:text-4xl; }
+  h2 { @apply text-2xl md:text-3xl; }
+  h3 { @apply text-xl md:text-2xl; }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white/[0.03] backdrop-blur-3xl border border-white/[0.08] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] transition-all duration-300;
+    /* Responsive padding: smaller on mobile, larger on ultra-wide */
+    padding: clamp(1.25rem, 2vw, 2.5rem);
+  }
+
+  .glass-card-hover {
+    @apply hover:bg-white/[0.05] hover:border-white/[0.12] hover:shadow-[0_32px_64px_-16px_rgba(0,0,0,0.6)];
+  }
+
+  .glow-primary {
+    @apply shadow-[0_0_40px_-10px_rgba(139,92,246,0.4)];
+  }
+  
+  .glow-primary-lg {
+    @apply shadow-[0_0_60px_-15px_rgba(139,92,246,0.6)];
+  }
+
+  .text-hierarchy-label {
+    @apply text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/70;
+  }
+
+  .text-hierarchy-value {
+    @apply text-sm font-bold text-white tracking-tight;
+  }
+
+  .text-hierarchy-heading {
+    @apply text-lg font-headline font-bold uppercase tracking-tight;
+  }
+
+  /* Fixed Scroll Areas for the App Shell experience */
+  .app-scroll-area {
+    @apply h-full overflow-y-auto no-scrollbar scroll-smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+input, textarea {
+  @apply select-text;
+}
+
+.font-body {
+  font-family: var(--font-inter), sans-serif;
+}
+
+.font-headline {
+  font-family: var(--font-space-grotesk), sans-serif;
+}
+
+/* Animations for Visual Hierarchy */
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-in-scale {
+  animation: fadeInScale 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+

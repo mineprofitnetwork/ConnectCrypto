@@ -1,0 +1,22 @@
+{
+  "placeholderImages": [
+    {
+      "id": "hero-crypto",
+      "description": "Abstract futuristic crypto trading background",
+      "imageUrl": "https://picsum.photos/seed/trade1/1200/800",
+      "imageHint": "crypto trade"
+    },
+    {
+      "id": "trader-avatar",
+      "description": "Professional trader profile avatar",
+      "imageUrl": "https://picsum.photos/seed/avatar1/200/200",
+      "imageHint": "person profile"
+    },
+    {
+      "id": "app-logo",
+      "description": "ConnectCrypto Brand Logo",
+      "imageUrl": "https://picsum.photos/seed/logo/200/200",
+      "imageHint": "crypto logo"
+    }
+  ]
+}

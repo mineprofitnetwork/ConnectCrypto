@@ -1,0 +1,18 @@
+CONNECTCRYPTO UNIFIED NETWORK REFERENCE - ACTIVE PROFILES
+
+ROOT AUTHORITY (ADMIN)
+----------------------
+Username: iamadmin
+Email: iamadmin@connectcrypto.com
+Password: admin123
+Role: admin
+Status: ACTIVE (Auto-provisioned on registration/login)
+
+NOTE: All other test identities have been purged from the active ledger. 
+Additional traders or clients must be provisioned via the Admin Dashboard.
+
+QUICK ACCESS LINKS
+------------------
+Identity Gate (Login): /auth/login
+Creation Portal (Register): /auth/register
+Root Hub: /dashboard/admin
