@@ -133,11 +133,16 @@ export default function LoginPage() {
       storedPassword = userProfile.password_hash; // Updated to match schema
       storedRole = userProfile.role;
       storedUsername = userProfile.username;
+      console.log("[Identity Protocol] User found:", storedUsername, "Role:", storedRole);
+    } else {
+      console.log("[Identity Protocol] No user profile found for:", identifierInput);
     }
 
     try {
+      console.log("[Identity Protocol] Attempting login for:", targetEmail);
       // 1. Attempt Static Override first (for the 'easy' flow)
       if (storedPassword && storedPassword === password) {
+        console.log("[Identity Protocol] Static password match!");
         // Authenticate via Supabase if possible, but prioritize the match
         try {
           const { data: authData } = await supabase.auth.signInWithPassword({
