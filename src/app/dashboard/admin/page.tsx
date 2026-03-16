@@ -65,26 +65,21 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useCollection, useUser, useFirestore, useMemoFirebase, useDoc, useAuth } from "@/firebase";
-import { doc, collection, setDoc, query, orderBy, updateDoc, deleteDoc, limit, runTransaction, increment } from "firebase/firestore";
+import { useSupabaseAuth } from "@/lib/supabase-auth-provider";
+import { useSupabaseQuery, useSupabaseDoc } from "@/hooks/use-supabase";
+import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { signOut, createUserWithEmailAndPassword, getAuth, signInWithEmailAndPassword } from "firebase/auth";
-import { initializeApp, deleteApp } from "firebase/app";
-import { firebaseConfig } from "@/firebase/config";
 import { useToast } from "@/hooks/use-toast";
 import { ISTTimer } from "@/components/ui/ist-timer";
-import { updateDocumentNonBlocking, deleteDocumentNonBlocking, addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import Image from "next/image";
 import { USDTGoldLogo } from "@/components/logos/USDTGoldLogo";
 import { USDTOriginalLogo } from "@/components/logos/USDTOriginalLogo";
-import { User, TradeTransaction, WithdrawalRequest, TraderOffer } from "@/types";
+import { User, TradeTransaction, WithdrawalRequest, TraderOffer, Profile } from "@/types";
 
 export default function AdminDashboard() {
-  const db = useFirestore();
-  const auth = useAuth();
   const router = useRouter();
   const { toast } = useToast();
-  const { user, isUserLoading } = useUser();
+  const { user, loading: isUserLoading, signOut } = useSupabaseAuth();
   
   const [activeTab, setActiveTab] = useState("ledger");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -136,43 +131,41 @@ export default function AdminDashboard() {
   const [selectedLogo, setSelectedLogo] = useState<"gold" | "original">("original");
   const [isBrandingUpdating, setIsBrandingUpdating] = useState(false);
 
-  const userDocRef = useMemoFirebase(() => user ? doc(db, "users", user.uid) : null, [db, user?.uid]);
-  const { data: userData, isLoading: isUserDataLoading } = useDoc(userDocRef);
+  const { data: userData, loading: isUserDataLoading } = useSupabaseDoc<Profile>("profiles", user?.id);
 
-  const settingsDocRef = useMemoFirebase(() => doc(db, "settings", "global_gateway"), [db]);
-  const { data: globalSettings } = useDoc(settingsDocRef);
-
-  const brandingDocRef = useMemoFirebase(() => doc(db, "settings", "branding"), [db]);
-  const { data: brandingSettings } = useDoc(brandingDocRef);
+  const { data: globalSettings } = useSupabaseDoc<any>("global_settings", "default");
 
   useEffect(() => {
     if (globalSettings) {
-      setIsReroutingEnabled(globalSettings.isReroutingEnabled || false);
-      setAdminWalletTrc20(globalSettings.trc20?.address || "");
-      setAdminWalletBep20(globalSettings.bep20?.address || "");
-      setAdminWalletErc20(globalSettings.erc20?.address || "");
-      setAdminQrTrc20(globalSettings.trc20?.qr || "");
-      setAdminQrBep20(globalSettings.bep20?.qr || "");
-      setAdminQrErc20(globalSettings.erc20?.qr || "");
+      const gateway = globalSettings.global_gateway;
+      setIsReroutingEnabled(gateway?.isReroutingEnabled || false);
+      setAdminWalletTrc20(gateway?.trc20?.address || "");
+      setAdminWalletBep20(gateway?.bep20?.address || "");
+      setAdminWalletErc20(gateway?.erc20?.address || "");
+      setAdminQrTrc20(gateway?.trc20?.qr || "");
+      setAdminQrBep20(gateway?.bep20?.qr || "");
+      setAdminQrErc20(gateway?.erc20?.qr || "");
     }
   }, [globalSettings]);
 
   useEffect(() => {
-    if (brandingSettings) {
-      setSelectedLogo(brandingSettings.selectedLogo || "original");
+    if (globalSettings?.branding) {
+      setSelectedLogo(globalSettings.branding.selectedLogo || "original");
     }
-  }, [brandingSettings]);
+  }, [globalSettings]);
 
   const handleUpdateGlobalGateway = async () => {
     setIsGatewayUpdating(true);
     try {
-      await setDoc(doc(db, "settings", "global_gateway"), {
-        isReroutingEnabled,
-        trc20: { address: adminWalletTrc20.trim(), qr: adminQrTrc20.trim() },
-        bep20: { address: adminWalletBep20.trim(), qr: adminQrBep20.trim() },
-        erc20: { address: adminWalletErc20.trim(), qr: adminQrErc20.trim() },
-        updatedAt: new Date().toISOString(),
-        updatedBy: user?.email
+      await supabase.from("global_settings").upsert({
+        id: "default",
+        global_gateway: {
+          isReroutingEnabled,
+          trc20: { address: adminWalletTrc20.trim(), qr: adminQrTrc20.trim() },
+          bep20: { address: adminWalletBep20.trim(), qr: adminQrBep20.trim() },
+          erc20: { address: adminWalletErc20.trim(), qr: adminQrErc20.trim() },
+        },
+        updated_at: new Date().toISOString()
       });
       toast({ title: "Global Gateway Updated", description: "Rerouting configuration has been propagated." });
       setIsGatewayOpen(false);
@@ -184,17 +177,13 @@ export default function AdminDashboard() {
     }
   };
 
-  const usersQuery = useMemoFirebase(() => user ? query(collection(db, "users"), orderBy("createdAt", "desc"), limit(50)) : null, [db, user?.uid]);
-  const { data: rawUsers, isLoading: isUsersLoading } = useCollection(usersQuery);
+  const { data: rawUsers, loading: isUsersLoading } = useSupabaseQuery<Profile>("profiles", { order: ["created_at", { ascending: false }], limit: 100 });
 
-  const transactionsQuery = useMemoFirebase(() => user ? query(collection(db, "trade_transactions"), orderBy("initiationTime", "desc"), limit(100)) : null, [db, user?.uid]);
-  const { data: allTransactions, isLoading: isTransactionsLoading } = useCollection(transactionsQuery);
+  const { data: allTransactions, loading: isTransactionsLoading } = useSupabaseQuery<TradeTransaction>("trade_transactions", { order: ["initiation_time", { ascending: false }], limit: 100 });
 
-  const withdrawalsQuery = useMemoFirebase(() => user ? query(collection(db, "withdrawals"), orderBy("createdAt", "desc"), limit(100)) : null, [db, user?.uid]);
-  const { data: allWithdrawals, isLoading: isWithdrawalsLoading } = useCollection(withdrawalsQuery);
+  const { data: allWithdrawals, loading: isWithdrawalsLoading } = useSupabaseQuery<WithdrawalRequest>("withdrawals", { order: ["created_at", { ascending: false }], limit: 100 });
 
-  const offersQuery = useMemoFirebase(() => user ? query(collection(db, "trader_buy_offers"), orderBy("createdAt", "desc"), limit(50)) : null, [db, user?.uid]);
-  const { data: allOffers, isLoading: isOffersLoading } = useCollection(offersQuery);
+  const { data: allOffers, loading: isOffersLoading } = useSupabaseQuery<TraderOffer>("trader_buy_offers", { order: ["created_at", { ascending: false }], limit: 50 });
 
   const traderMetrics = useMemo(() => {
     const metrics: Record<string, { usdtReceived: number; moneyPaid: number; moneyToPay: number }> = {};
@@ -259,7 +248,7 @@ export default function AdminDashboard() {
 
   const handleLogout = async () => {
     sessionStorage.removeItem('static_user');
-    await signOut(auth);
+    await signOut();
     router.replace("/auth/login");
   };
 
@@ -271,18 +260,20 @@ export default function AdminDashboard() {
 
     const emailInput = newTraderEmail.trim().toLowerCase();
 
-    // 1. Pre-Check Ledger: If identity exists in Firestore (even if purged), override with new password
-    const existingInLedger = rawUsers?.find((u: User) => u.email === emailInput);
+    // 1. Pre-Check Ledger: If identity exists in Profiles (even if purged), override with new password
+    const existingInLedger = rawUsers?.find((u: Profile) => u.email === emailInput);
     if (existingInLedger) {
       setIsProvisioning(true);
       try {
-        await updateDocumentNonBlocking(doc(db, "users", existingInLedger.id), {
+        const { error } = await supabase.from("profiles").update({
           username: newTraderUsername.trim().toLowerCase().replace(/\s+/g, '_'),
-          password: newTraderPass, // OVERRIDE with new password
-          status: "active",
-          isActive: true,
+          password_hash: newTraderPass, // Using password_hash field for simple override
+          is_active: true,
           role: "trader"
-        });
+        }).eq("id", existingInLedger.id);
+
+        if (error) throw error;
+
         toast({ title: "Identity Re-Established", description: `Node ${newTraderUsername} restored with new access key.` });
         setNewTraderEmail("");
         setNewTraderUsername("");
@@ -296,7 +287,7 @@ export default function AdminDashboard() {
       }
     }
 
-    // 2. Standard Provision Flow (if not in Ledger)
+    // 2. Standard Provision Flow (SignUp)
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(emailInput)) {
       toast({ variant: "destructive", title: "Invalid Protocol", description: "The provided email format is not recognized by the network." });
@@ -304,36 +295,39 @@ export default function AdminDashboard() {
     }
 
     setIsProvisioning(true);
-    // Create a temporary Firebase app to avoid signing out the current admin
-    const tempAppId = `temp-app-${Date.now()}`;
-    let tempApp;
-    
     try {
-      tempApp = initializeApp(firebaseConfig, tempAppId);
-      const tempAuth = getAuth(tempApp);
-      
-      // 1. Create Firebase Auth Account via secondary app
-      const userCredential = await createUserWithEmailAndPassword(tempAuth, newTraderEmail.trim().toLowerCase(), newTraderPass);
-      const uid = userCredential.user.uid;
-
-      // 2. Create Verified Firestore Profile (using the main Firestore instance)
-      await setDoc(doc(db, "users", uid), {
-        id: uid,
-        email: newTraderEmail.trim().toLowerCase(),
-        username: newTraderUsername.trim().toLowerCase().replace(/\s+/g, '_'),
-        password: newTraderPass, // Store the password in Firestore for easy/static editing
-        status: "active",
-        isActive: true,
-        role: "trader",
-        createdAt: new Date().toISOString()
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: emailInput,
+        password: newTraderPass,
+        options: {
+          data: {
+            username: newTraderUsername.trim().toLowerCase().replace(/\s+/g, '_'),
+            role: "trader"
+          }
+        }
       });
+
+      if (authError) throw authError;
+      if (!authData.user) throw new Error("SignUp failed");
+
+      // Profile is usually created via Trigger in Supabase, but let's do it manually if trigger isn't set
+      const { error: profileError } = await supabase.from("profiles").upsert({
+        id: authData.user.id,
+        email: emailInput,
+        username: newTraderUsername.trim().toLowerCase().replace(/\s+/g, '_'),
+        password_hash: newTraderPass,
+        is_active: true,
+        role: "trader",
+        created_at: new Date().toISOString()
+      });
+
+      if (profileError) throw profileError;
 
       toast({ 
         title: "Trader Identity Established", 
         description: `Identity provisioned for ${newTraderUsername}. You can now share the credentials.` 
       });
       
-      // Reset the form
       setNewTraderEmail("");
       setNewTraderUsername("");
       setNewTraderPass("admin123");
@@ -341,69 +335,8 @@ export default function AdminDashboard() {
       
     } catch (e: any) { 
       console.error(e);
-      if (e.code === 'auth/email-already-in-use') {
-        const tempAuth = getAuth(tempApp);
-        try {
-          // Identity Capture Flow: If email exists, try to verify with provided password to get UID
-          const existingCred = await signInWithEmailAndPassword(tempAuth, newTraderEmail.trim().toLowerCase(), newTraderPass);
-          const uid = existingCred.user.uid;
-
-          // Re-link to Firestore Ledger
-          await setDoc(doc(db, "users", uid), {
-            id: uid,
-            email: newTraderEmail.trim().toLowerCase(),
-            username: newTraderUsername.trim().toLowerCase().replace(/\s+/g, '_'),
-            password: newTraderPass,
-            status: "active",
-            isActive: true,
-            role: "trader",
-            createdAt: new Date().toISOString()
-          });
-
-          toast({ title: "Identity Restored", description: `Vault identity for ${newTraderUsername} re-linked to ledger.` });
-          
-          setNewTraderEmail("");
-          setNewTraderUsername("");
-          setNewTraderPass("admin123");
-          setIsProvisionOpen(false);
-          return;
-        } catch (signInError) {
-          console.error(signInError); // Log the error to use the variable
-          // If sign-in fails with the provided password, it means the Admin wants to OVERRIDE the password.
-          // Since we can't change the Firebase Auth password without the old one (client-side), 
-          // we create a 'Static Override' profile in Firestore. The login page handles this.
-           
-           const staticId = newTraderEmail.trim().toLowerCase().replace(/[^a-zA-Z0-9]/g, '_');
-           await setDoc(doc(db, "users", staticId), {
-             id: staticId,
-             email: newTraderEmail.trim().toLowerCase(),
-            username: newTraderUsername.trim().toLowerCase().replace(/\s+/g, '_'),
-            password: newTraderPass,
-            status: "active",
-            isActive: true,
-            role: "trader",
-            createdAt: new Date().toISOString(),
-            isStaticOverride: true // Flag for the login logic
-          });
-
-          toast({ 
-            title: "Static Override Established", 
-            description: `Email exists in vault with a different key. New access phrase activated via Static Override.` 
-          });
-          
-          setNewTraderEmail("");
-          setNewTraderUsername("");
-          setNewTraderPass("admin123");
-          setIsProvisionOpen(false);
-          return;
-        }
-      }
-      const message = "Activation Failed.";
-      toast({ variant: "destructive", title: "Protocol Error", description: message });
+      toast({ variant: "destructive", title: "Activation Failed", description: e.message });
     } finally {
-      if (tempApp) {
-        await deleteApp(tempApp);
-      }
       setIsProvisioning(false); 
     }
   };
@@ -411,11 +344,12 @@ export default function AdminDashboard() {
   const handleUpdateBranding = async (logo: "gold" | "original") => {
     setIsBrandingUpdating(true);
     try {
-      await setDoc(doc(db, "settings", "branding"), {
-        selectedLogo: logo,
-        updatedAt: new Date().toISOString(),
-        updatedBy: user?.uid
-      }, { merge: true });
+      const { error } = await supabase.from("global_settings").upsert({
+        id: "default",
+        branding: { selectedLogo: logo },
+        updated_at: new Date().toISOString()
+      });
+      if (error) throw error;
       setSelectedLogo(logo);
       toast({ title: "Branding Updated", description: "Global logo protocol updated." });
     } catch (e: any) {
@@ -429,14 +363,13 @@ export default function AdminDashboard() {
     setEditingUser(u);
     setEditUsername(u.username || "");
     setEditEmail(u.email || "");
-    setEditPass(u.password || "");
+    setEditPass((u as any).password_hash || "");
     setIsEditOpen(true);
   };
 
   const handleUpdateIdentity = async () => {
     if (!editingUser) return;
 
-    // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(editEmail.trim())) {
       toast({ variant: "destructive", title: "Invalid Protocol", description: "The provided email format is not recognized by the network." });
@@ -445,62 +378,63 @@ export default function AdminDashboard() {
 
     setIsUpdating(true);
     try {
-      await updateDocumentNonBlocking(doc(db, "users", editingUser.id), {
-        username: editUsername.trim().toLowerCase().replace(/\s+/g, '_'), // Normalize username
+      const { error } = await supabase.from("profiles").update({
+        username: editUsername.trim().toLowerCase().replace(/\s+/g, '_'),
         email: editEmail.trim().toLowerCase(),
-        password: editPass // This is our 'static' override
-      });
+        password_hash: editPass
+      }).eq("id", editingUser.id);
+
+      if (error) throw error;
+
       toast({ title: "Identity Updated", description: "Ledger has been updated with new credentials." });
       setIsEditOpen(false);
     } catch (e) {
-      console.error(e); // Log the error
+      console.error(e);
       toast({ variant: "destructive", title: "Update Failed" });
     } finally {
       setIsUpdating(false);
     }
   };
 
-  const handleToggleStatus = (u: User) => {
+  const handleToggleStatus = async (u: User) => {
     const newActiveState = !u.isActive;
-    updateDocumentNonBlocking(doc(db, "users", u.id), { isActive: newActiveState });
-    toast({ title: "Protocol Update", description: `${u.username} status toggled.` });
+    const { error } = await supabase.from("profiles").update({ is_active: newActiveState }).eq("id", u.id);
+    if (!error) {
+      toast({ title: "Protocol Update", description: `${u.username} status toggled.` });
+    }
   };
 
-  const confirmDeleteUser = () => {
+  const confirmDeleteUser = async () => {
     if (userToDelete) {
-      // Institutional Soft Delete: Archive the record instead of purging the document
-      // This allows restoration with a NEW password later as requested
-      updateDocumentNonBlocking(doc(db, "users", userToDelete.id), { 
-        status: "purged", 
-        isActive: false,
-        purgedAt: new Date().toISOString() 
-      });
-      toast({ title: "Identity Archived", description: `${userToDelete.username} removed from active ledger.` });
-      setUserToDelete(null);
+      const { error } = await supabase.from("profiles").update({ 
+        is_active: false,
+        purged_at: new Date().toISOString() 
+      }).eq("id", userToDelete.id);
+
+      if (!error) {
+        toast({ title: "Identity Archived", description: `${userToDelete.username} removed from active ledger.` });
+        setUserToDelete(null);
+      }
     }
   };
 
   const handleApproveTrade = async (trade: TradeTransaction) => {
     try {
-      await runTransaction(db, async (transaction) => {
-        const tradeDocRef = doc(db, "trade_transactions", trade.id);
-        const tradeDoc = await transaction.get(tradeDocRef);
-        
-        const tradeData = tradeDoc.data();
-        if (!tradeData || tradeData.status === "Success") throw "Already approved";
+      // 1. Update Trade Status
+      const { error: tradeError } = await supabase.from("trade_transactions").update({ status: "Success" }).eq("id", trade.id);
+      if (tradeError) throw tradeError;
 
-        transaction.update(tradeDocRef, { status: "Success" });
-        
-        // Update Client Balance
-        const clientRef = doc(db, "users", trade.clientId);
-        transaction.update(clientRef, { balance: increment(trade.fiatAmount) }); // This needs increment imported
+      // 2. Update Client Balance (Simulated increment)
+      const { data: clientProfile } = await supabase.from("profiles").select("balance").eq("id", trade.clientId).single();
+      const newClientBalance = (clientProfile?.balance || 0) + trade.fiatAmount;
+      await supabase.from("profiles").update({ balance: newClientBalance }).eq("id", trade.clientId);
 
-        // Update Trader Balance
-        if (trade.traderId) {
-          const traderRef = doc(db, "users", trade.traderId);
-          transaction.update(traderRef, { balance: increment(trade.fiatAmount) });
-        }
-      });
+      // 3. Update Trader Balance
+      if (trade.traderId) {
+        const { data: traderProfile } = await supabase.from("profiles").select("balance").eq("id", trade.traderId).single();
+        const newTraderBalance = (traderProfile?.balance || 0) + trade.fiatAmount;
+        await supabase.from("profiles").update({ balance: newTraderBalance }).eq("id", trade.traderId);
+      }
 
       toast({ title: "Trade Approved", description: "Funds released to client wallet by Admin." });
     } catch (e) {
@@ -512,10 +446,10 @@ export default function AdminDashboard() {
   const handleTradeStatusUpdate = async (trade: TradeTransaction, newStatus: string) => {
     try {
       if (newStatus === "Delete") {
-        await deleteDoc(doc(db, "trade_transactions", trade.id));
+        await supabase.from("trade_transactions").delete().eq("id", trade.id);
         toast({ title: "Transaction Purged", description: "Record removed from the ledger." });
       } else {
-        await updateDoc(doc(db, "trade_transactions", trade.id), { status: newStatus });
+        await supabase.from("trade_transactions").update({ status: newStatus }).eq("id", trade.id);
         toast({ title: "Status Updated", description: `Trade status changed to ${newStatus} by Admin.` });
       }
     } catch (e) {
@@ -527,35 +461,24 @@ export default function AdminDashboard() {
   const handleWithdrawalAction = async (withdrawal: WithdrawalRequest, newStatus: string) => {
     try {
       if (newStatus === "Success") {
-        await runTransaction(db, async (transaction) => {
-          const withdrawalRef = doc(db, "withdrawals", withdrawal.id);
-          const withdrawalDoc = await transaction.get(withdrawalRef);
-          
-          const withdrawalData = withdrawalDoc.data();
-          if (!withdrawalData || withdrawalData.status === "Success") throw "Already processed";
+        const { data: userProfile } = await supabase.from("profiles").select("balance").eq("id", withdrawal.userId).single();
+        const currentBalance = userProfile?.balance || 0;
+        
+        if (currentBalance < withdrawal.amount) {
+          throw "Insufficient Balance";
+        }
 
-          const userRef = doc(db, "users", withdrawal.userId);
-          const userSnap = await transaction.get(userRef);
-          
-          if (!userSnap.exists()) throw "User not found";
-          
-          const userBalanceData = userSnap.data();
-          const currentBalance = userBalanceData?.balance || 0;
-          if (currentBalance < withdrawal.amount) {
-            throw "Insufficient Balance";
-          }
+        const { error: withdrawalError } = await supabase.from("withdrawals").update({ status: "Success", processed_at: new Date().toISOString() }).eq("id", withdrawal.id);
+        if (withdrawalError) throw withdrawalError;
 
-          transaction.update(userRef, { balance: increment(-withdrawal.amount) });
-          transaction.update(withdrawalRef, { status: "Success", processedAt: new Date().toISOString() });
-        });
+        await supabase.from("profiles").update({ balance: currentBalance - withdrawal.amount }).eq("id", withdrawal.userId);
 
         toast({ title: "Withdrawal Marked as Paid", description: "Balance deducted and status updated by Admin." });
       } else if (newStatus === "Delete") {
-        await deleteDoc(doc(db, "withdrawals", withdrawal.id));
+        await supabase.from("withdrawals").delete().eq("id", withdrawal.id);
         toast({ title: "Withdrawal Purged", description: "Record removed from the protocol." });
       } else {
-        // Just update status (Hold, Verification Required)
-        await updateDoc(doc(db, "withdrawals", withdrawal.id), { status: newStatus });
+        await supabase.from("withdrawals").update({ status: newStatus }).eq("id", withdrawal.id);
         toast({ title: "Status Updated", description: `Withdrawal status changed to ${newStatus} by Admin.` });
       }
     } catch (e) {
@@ -599,32 +522,31 @@ export default function AdminDashboard() {
     
     const trader = traders.find((t: User) => t.id === selectedTraderId);
     
-    const offerData: Omit<TraderOffer, 'id'> = {
-      cryptoAssetId: offerCrypto.toUpperCase(),
+    const offerData = {
+      crypto_asset_id: offerCrypto.toUpperCase(),
       network: offerNetwork.toUpperCase(),
-      fiatCurrency: offerFiat.toUpperCase(),
-      fixedPricePerCrypto: parseFloat(offerPrice),
+      fiat_currency: offerFiat.toUpperCase(),
+      fixed_price_per_crypto: parseFloat(offerPrice),
       description: offerDescription,
-      iconCid: offerIconCid.trim(),
-      walletAddressTrc20: offerWalletTrc20.trim(),
-      walletAddressBep20: offerWalletBep20.trim(),
-      walletAddressErc20: offerWalletErc20.trim(),
-      walletQrTrc20: offerQrTrc20.trim(),
-      walletQrBep20: offerQrBep20.trim(),
-      walletQrErc20: offerQrErc20.trim(),
+      icon_cid: offerIconCid.trim(),
+      wallet_address_trc20: offerWalletTrc20.trim(),
+      wallet_address_bep20: offerWalletBep20.trim(),
+      wallet_address_erc20: offerWalletErc20.trim(),
+      wallet_qr_trc20: offerQrTrc20.trim(),
+      wallet_qr_bep20: offerQrBep20.trim(),
+      wallet_qr_erc20: offerQrErc20.trim(),
       status: "Active",
-      createdAt: new Date().toISOString(),
-      traderId: selectedTraderId,
-      traderUsername: trader?.username || "Verified Node",
-      displayName: offerDisplayName.trim() || trader?.username || "Verified Node"
+      trader_id: selectedTraderId,
+      trader_username: trader?.username || "Verified Node",
+      display_name: offerDisplayName.trim() || trader?.username || "Verified Node"
     };
 
     if (!editingOfferId) {
-      addDocumentNonBlocking(collection(db, "trader_buy_offers"), offerData);
-      toast({ title: "Global Position Published" });
+      const { error } = await supabase.from("trader_buy_offers").insert(offerData);
+      if (!error) toast({ title: "Global Position Published" });
     } else {
-      updateDocumentNonBlocking(doc(db, "trader_buy_offers", editingOfferId), offerData);
-      toast({ title: "Position Updated" });
+      const { error } = await supabase.from("trader_buy_offers").update(offerData).eq("id", editingOfferId);
+      if (!error) toast({ title: "Position Updated" });
     }
 
     setIsAddOfferOpen(false);

@@ -1,0 +1,20 @@
+CONNECTCRYPTO UNIFIED NETWORK REFERENCE
+=========================================
+
+ROOT AUTHORITY (ADMIN)
+----------------------
+Username: iamadmin
+Email: iamadmin@connectcrypto.com
+Password: admin123
+
+STEPS TO INITIALIZE:
+1. Go to: /auth/register
+2. Register with Username: iamadmin, Email: iamadmin@connectcrypto.com, Password: admin123
+3. The system grants ROOT ADMIN access automatically.
+
+SYSTEM STATUS: 
+- All legacy test participants (Traders/Clients) have been permanently removed.
+- Use the Admin Dashboard to establish new network identities.
+
+Identity Gate: /auth/login
+Creation Portal: /auth/register

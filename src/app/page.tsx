@@ -2,11 +2,11 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useUser } from "@/firebase";
+import { useSupabaseAuth } from "@/lib/supabase-auth-provider";
 import { Loader2, ShieldCheck, Zap } from "lucide-react";
 
 export default function Home() {
-  const { isUserLoading } = useUser();
+  const { loading: isUserLoading } = useSupabaseAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -20,6 +20,20 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-8 relative overflow-hidden" role="banner">
+      {/* SEO Optimized Content (Visually hidden but readable by search engines) */}
+      <section className="sr-only">
+        <h2>Best P2P Platform for USDT in India</h2>
+        <p>ConnectCrypto is the premier institutional node for buying and selling crypto in India. Experience high commission trading with our secure gaming stock fund protocols.</p>
+        <h3>WFH Agent Jobs & Remote Opportunities</h3>
+        <p>Looking for a remote job? Join our network as a WFH agent and earn high commissions on every trade. ConnectCrypto offers the best remote work opportunities in the crypto space.</p>
+        <ul>
+          <li>Buy and Sell USDT securely in India</li>
+          <li>High commission P2P trading</li>
+          <li>Gaming stock fund integration</li>
+          <li>Remote WFH agent jobs</li>
+        </ul>
+      </section>
+
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-primary/20 rounded-full blur-[120px] opacity-20 pointer-events-none" />
       
       <div className="relative z-10 flex flex-col items-center gap-12 text-center">

@@ -8,19 +8,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ShieldCheck, Loader2, Link2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, useFirestore } from "@/firebase";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, getDocs, query, collection, where, limit } from "firebase/firestore";
-import { setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
+import { supabase } from "@/lib/supabase";
+import { useSupabaseAuth } from "@/lib/supabase-auth-provider";
 import { ISTTimer } from "@/components/ui/ist-timer";
-import { User } from "@/types";
+import { User, Profile } from "@/types";
 
 function RegisterContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
-  const auth = useAuth();
-  const db = useFirestore();
+  const { loading: authLoading } = useSupabaseAuth();
   const [loading, setLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [referralCode, setReferralCode] = useState("");
@@ -43,56 +40,62 @@ function RegisterContent() {
     const refCode = (formData.get("referralCode") as string || "").trim().toUpperCase();
 
     try {
-      let agentData: User | null = null;
+      let agentData: Profile | null = null;
       if (refCode) {
-        const agentQuery = query(collection(db, "users"), where("referralCode", "==", refCode), where("role", "==", "agent"), limit(1));
-        const agentSnap = await getDocs(agentQuery);
-        if (!agentSnap.empty) {
-          agentData = agentSnap.docs[0].data() as User;
-        } else {
+        const { data: agentSnap, error: agentError } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("referral_code", refCode)
+          .eq("role", "agent")
+          .single();
+
+        if (agentError || !agentSnap) {
           toast({ variant: "destructive", title: "Invalid Referral", description: "The referral code provided is not authorized." });
           setLoading(false);
           return;
         }
+        agentData = agentSnap;
       }
 
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const uid = userCredential.user.uid;
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            username,
+            full_name: fullName,
+            role: "client"
+          }
+        }
+      });
 
-      const newUser: User = {
-        id: uid,
+      if (authError) throw authError;
+      if (!authData.user) throw new Error("Identity creation failed.");
+
+      const newUserProfile: any = {
+        id: authData.user.id,
         email,
         username,
-        // fullName is not in User interface but should be added or casted
-        ...({ fullName } as any),
-        isActive: true,
-        status: "active",
+        full_name: fullName,
+        is_active: true,
         role: "client",
-        createdAt: new Date().toISOString(),
-        // updatedAt not in interface
-        ...({ updatedAt: new Date().toISOString() } as any)
+        created_at: new Date().toISOString()
       };
 
       if (agentData) {
-        (newUser as any).agentId = agentData.id;
-        (newUser as any).agentUsername = agentData.username;
-        // traderId not in User interface for Agent role explicitly but implied
-        (newUser as any).traderId = (agentData as any).traderId;
-        (newUser as any).traderUsername = (agentData as any).traderUsername;
+        newUserProfile.agent_id = agentData.id;
+        newUserProfile.trader_id = agentData.trader_id;
       }
 
-      setDocumentNonBlocking(doc(db, "users", uid), newUser, { merge: true });
+      const { error: profileError } = await supabase.from("profiles").upsert(newUserProfile);
+      if (profileError) throw profileError;
 
-      toast({ title: "Identity Established", description: `Welcome, ${username}.` });
+      toast({ title: "Identity Established", description: `Welcome, ${username}. Please check your email for verification if required.` });
       router.push("/dashboard/client");
 
-    } catch (error) {
-      const err = error as any;
-      if (err.code === "auth/email-already-in-use") {
-        setAuthError("Identity already exists. Please use the Identity Gate.");
-      } else {
-        setAuthError(err.message);
-      }
+    } catch (error: any) {
+      console.error(error);
+      setAuthError(error.message || "Failed to establish identity.");
     } finally { setLoading(false); }
   };
 

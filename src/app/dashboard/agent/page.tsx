@@ -26,10 +26,10 @@ import {
   MessageSquare,
   LifeBuoy
 } from "lucide-react";
-import { collection, query, where, doc, getDoc, updateDoc, orderBy, onSnapshot, limit } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import { useUser, useFirestore, useCollection, useMemoFirebase, useAuth, useDoc } from "@/firebase";
-import { signOut } from "firebase/auth";
+import { supabase } from "@/lib/supabase";
+import { useSupabaseAuth } from "@/lib/supabase-auth-provider";
+import { useSupabaseQuery, useSupabaseDoc } from "@/hooks/use-supabase";
 import { useToast } from "@/hooks/use-toast";
 import { ISTTimer } from "@/components/ui/ist-timer";
 import Image from "next/image";
@@ -56,7 +56,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { agentAICommunicationAssistant } from "@/ai/flows/agent-ai-communication-assistant";
 import { USDTGoldLogo } from "@/components/logos/USDTGoldLogo";
 import { USDTOriginalLogo } from "@/components/logos/USDTOriginalLogo";
@@ -168,90 +167,43 @@ export default function AgentDashboard() {
   const [offerDisplayName, setOfferDisplayName] = useState("");
   const [offerDescription, setOfferDescription] = useState("");
 
-  const { user, isUserLoading } = useUser();
-  const db = useFirestore();
-  const auth = useAuth();
+  const { user, signOut, loading: isUserLoading } = useSupabaseAuth();
   const router = useRouter();
   const { toast } = useToast();
 
-  const brandingDocRef = useMemoFirebase(() => doc(db, "settings", "branding"), [db]);
-  const { data: brandingSettings } = useDoc(brandingDocRef);
+  const { data: globalSettings } = useSupabaseDoc<any>("global_settings", "default");
+  const brandingSettings = globalSettings?.branding;
 
-  const [userData, setUserData] = useState<User | null>(null);
-  const [isUserDataLoading, setIsUserDataLoading] = useState(true);
-  const [traderData, setTraderData] = useState<User | null>(null);
-
-  useEffect(() => {
-    if (user) {
-      const unsub = onSnapshot(doc(db, "users", user.uid), async (uDoc) => {
-        if (!uDoc.exists()) {
-          // If the document doesn't exist yet, check if it's a static user
-          const userObj = user as any;
-          if (userObj.isStatic) {
-            const cleanDisplayName = (user.displayName || 'AGENT').split('@')[0].replace(/[^a-zA-Z0-9]/g, '');
-            setUserData({
-              id: user.uid,
-              username: cleanDisplayName,
-              email: user.email || "",
-              role: (userObj.role || 'agent') as 'agent',
-              status: 'active',
-              isActive: true,
-              createdAt: new Date().toISOString()
-            });
-          }
-          setIsUserDataLoading(false);
-          return;
-        }
-        const data = uDoc.data() as User;
-        
-        // Sanitize Referral Code if it's an email or missing
-        // This is tricky because User interface doesn't have referralCode yet, I should add it.
-        // But for now I will cast to any to access dynamic props not in interface
-        const dataAny = data as any;
-        if (!dataAny.referralCode || dataAny.referralCode.includes("@")) {
-          const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-          let newRefCode = "";
-          for (let i = 0; i < 8; i++) {
-            newRefCode += chars.charAt(Math.floor(Math.random() * chars.length));
-          }
-          await updateDoc(doc(db, "users", user.uid), { referralCode: newRefCode });
-          dataAny.referralCode = newRefCode;
-        }
-
-        setUserData(data);
-        setIsUserDataLoading(false);
-        
-        if (dataAny.traderId) {
-          const tDoc = await getDoc(doc(db, "users", dataAny.traderId));
-          if (tDoc.exists()) {
-            setTraderData(tDoc.data() as User);
-          }
-        }
-      });
-      return () => unsub();
-    } else if (!isUserLoading) {
-      setIsUserDataLoading(false);
-    }
-  }, [user, isUserLoading, db]);
+  const { data: userData, loading: isUserDataLoading } = useSupabaseDoc<User>("profiles", user?.id);
+  
+  const { data: traderData } = useSupabaseDoc<User>("profiles", userData?.trader_id);
 
   // Referred Users Query
-  const referredUsersQuery = useMemoFirebase(() => user ? query(collection(db, "users"), where("agentId", "==", user.uid), limit(50)) : null, [db, user?.uid]);
-  const { data: referredUsers } = useCollection(referredUsersQuery);
+  const { data: referredUsers } = useSupabaseQuery<User>("profiles", {
+    eq: ["agent_id", user?.id],
+    limit: 50
+  });
 
   // Referred Users Trades Query
-  const referredTradesQuery = useMemoFirebase(() => user ? query(collection(db, "trade_transactions"), where("agentId", "==", user.uid), orderBy("initiationTime", "desc"), limit(100)) : null, [db, user?.uid]);
-  const { data: referredTrades } = useCollection(referredTradesQuery);
+  const { data: referredTrades } = useSupabaseQuery<TradeTransaction>("trade_transactions", {
+    eq: ["agent_id", user?.id],
+    order: ["initiation_time", { ascending: false }],
+    limit: 100
+  });
 
   // My Offers Query (Promotional Positions)
-  const myOffersQuery = useMemoFirebase(() => user ? query(collection(db, "trader_buy_offers"), where("agentId", "==", user.uid), orderBy("createdAt", "desc"), limit(50)) : null, [db, user?.uid]);
-  const { data: myOffers } = useCollection(myOffersQuery);
+  const { data: myOffers } = useSupabaseQuery<TraderOffer>("trader_buy_offers", {
+    eq: ["agent_id", user?.id],
+    order: ["created_at", { ascending: false }],
+    limit: 50
+  });
 
   const referralLink = useMemo(() => {
-    if (typeof window !== 'undefined' && userData?.referralCode) {
-      return `${window.location.origin}/auth/register?ref=${userData.referralCode}`;
+    if (typeof window !== 'undefined' && userData?.referral_code) {
+      return `${window.location.origin}/auth/register?ref=${userData.referral_code}`;
     }
     return "";
-  }, [userData?.referralCode]);
+  }, [userData?.referral_code]);
 
   useEffect(() => {
     if (!isUserLoading && !user) {
@@ -264,34 +216,38 @@ export default function AgentDashboard() {
   }, [user, isUserLoading, userData, isUserDataLoading, router]);
 
   const handleOpenPosition = async () => {
-    if (!user || !traderData || !offerPrice || !userData || !userData.traderId) return;
+    if (!user || !traderData || !offerPrice || !userData || !userData.trader_id) return;
     
     const offerData = {
-      traderId: userData.traderId,
-      traderUsername: traderData.username,
-      agentId: user.uid,
-      agentUsername: userData.username,
-      displayName: offerDisplayName.trim() || userData.username,
-      cryptoAssetId: offerCrypto.toUpperCase(),
+      trader_id: userData.trader_id,
+      trader_username: traderData.username,
+      agent_id: user.id,
+      agent_username: userData.username,
+      display_name: offerDisplayName.trim() || userData.username,
+      crypto_asset_id: offerCrypto.toUpperCase(),
       network: offerNetwork.join(", ").toUpperCase(),
-      fiatCurrency: offerFiat.toUpperCase(),
-      fixedPricePerCrypto: parseFloat(offerPrice),
+      fiat_currency: offerFiat.toUpperCase(),
+      fixed_price_per_crypto: parseFloat(offerPrice),
       description: offerDescription,
       // Use trader's wallets
-      walletAddressTrc20: traderData.walletAddressTrc20 || "",
-      walletAddressBep20: traderData.walletAddressBep20 || "",
-      walletAddressErc20: traderData.walletAddressErc20 || "",
-      walletQrTrc20: traderData.walletQrTrc20 || "",
-      walletQrBep20: traderData.walletQrBep20 || "",
-      walletQrErc20: traderData.walletQrErc20 || "",
-      status: "Active",
-      createdAt: new Date().toISOString()
+      wallet_address_trc20: traderData.wallet_address_trc20 || "",
+      wallet_address_bep20: traderData.wallet_address_bep20 || "",
+      wallet_address_erc20: traderData.wallet_address_erc20 || "",
+      wallet_qr_trc20: traderData.wallet_qr_trc20 || "",
+      wallet_qr_bep20: traderData.wallet_qr_bep20 || "",
+      wallet_qr_erc20: traderData.wallet_qr_erc20 || "",
+      status: "Active"
     };
 
-    addDocumentNonBlocking(collection(db, "trader_buy_offers"), offerData);
-    toast({ title: "Agent Offer Published", description: "This offer is linked to your node's infrastructure." });
-    setIsAddOfferOpen(false);
-    resetOfferForm();
+    const { error } = await supabase.from("trader_buy_offers").insert(offerData);
+    
+    if (error) {
+      toast({ variant: "destructive", title: "Failed to publish", description: error.message });
+    } else {
+      toast({ title: "Agent Offer Published", description: "This offer is linked to your node's infrastructure." });
+      setIsAddOfferOpen(false);
+      resetOfferForm();
+    }
   };
 
   const handleGenerateAiMessage = async () => {
@@ -304,7 +260,7 @@ export default function AgentDashboard() {
           agentUsername: userData.username,
           referralLink: referralLink,
           traderUsername: traderData?.username,
-          commissionRate: traderData?.referralCommission
+          commissionRate: traderData?.referral_commission
         },
         clientDetails: aiClientUsername ? { clientUsername: aiClientUsername } : undefined,
         additionalContext: aiAdditionalContext
@@ -392,7 +348,7 @@ export default function AgentDashboard() {
                         <p className="text-primary text-[10px] uppercase tracking-[0.5em] font-black">Node Promotion Engine</p>
                         <h2 className="text-3xl md:text-5xl font-headline font-black uppercase tracking-tighter leading-tight italic">Refer & Earn Program</h2>
                         <p className="text-white/40 text-xs font-medium uppercase tracking-widest leading-relaxed max-w-lg">
-                           Share your unique protocol link. New users signing up will be assigned to your node. You earn {traderData?.referralCommission || 0}% commission on their trade volume.
+                           Share your unique protocol link. New users signing up will be assigned to your node. You earn {traderData?.referral_commission || 0}% commission on their trade volume.
                         </p>
                      </div>
                      <div className="w-full lg:w-auto space-y-4">
@@ -421,10 +377,9 @@ export default function AgentDashboard() {
                   <Card className="glass-card border-none rounded-[2.5rem] p-8 flex flex-col justify-between">
                      <div className="space-y-2">
                         <p className="text-hierarchy-label">Referral Volume</p>
-                        <h3 className="text-4xl font-headline font-black text-green-500 italic">₹{referredTrades?.reduce((acc, t) => acc + (t.fiatAmount || 0), 0).toLocaleString()}</h3>
+                        <h3 className="text-4xl font-headline font-black text-green-500 italic">₹{referredTrades?.reduce((acc, t) => acc + (t.fiat_amount || 0), 0).toLocaleString()}</h3>
                      </div>
                      <div className="flex items-center gap-2 mt-6">
-                        <Percent className="w-4 h-4 text-green-500" />
                         <span className="text-[9px] font-black uppercase tracking-widest text-white/40">Total Settled</span>
                      </div>
                   </Card>
@@ -469,12 +424,12 @@ export default function AgentDashboard() {
                                  </TableCell>
                                  <TableCell className="px-8 py-4 text-center">
                                     <div className="flex items-center justify-center gap-2">
-                                       <div className={`w-1.5 h-1.5 rounded-full ${u.isActive ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'bg-red-500'}`} />
-                                       <span className="text-[9px] font-black uppercase tracking-widest text-white/40">{u.isActive ? 'Active' : 'Locked'}</span>
+                                       <div className={`w-1.5 h-1.5 rounded-full ${u.is_active ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'bg-red-500'}`} />
+                                       <span className="text-[9px] font-black uppercase tracking-widest text-white/40">{u.is_active ? 'Active' : 'Locked'}</span>
                                     </div>
                                  </TableCell>
                                  <TableCell className="px-8 py-4 text-right">
-                                    <span className="text-[11px] font-black text-primary">₹{(referredTrades?.filter(t => t.clientId === u.id).reduce((acc, t) => acc + (t.fiatAmount || 0), 0) || 0).toLocaleString()}</span>
+                                    <span className="text-[11px] font-black text-primary">₹{(referredTrades?.filter(t => t.client_id === u.id).reduce((acc, t) => acc + (t.fiat_amount || 0), 0) || 0).toLocaleString()}</span>
                                  </TableCell>
                               </TableRow>
                            ))}
@@ -678,8 +633,8 @@ export default function AgentDashboard() {
                         {referredTrades?.map(t => (
                           <TableRow key={t.id} className="border-white/[0.05] hover:bg-white/[0.02]">
                              <TableCell className="px-8 py-4 font-mono text-[9px] text-white/40">#{t.id.slice(-6).toUpperCase()}</TableCell>
-                             <TableCell className="text-xs font-black text-white uppercase italic">{t.clientUsername}</TableCell>
-                             <TableCell className="text-xs font-black text-white italic">₹{t.fiatAmount.toLocaleString()}</TableCell>
+                             <TableCell className="text-xs font-black text-white uppercase italic">{t.client_username}</TableCell>
+                             <TableCell className="text-xs font-black text-white italic">₹{t.fiat_amount.toLocaleString()}</TableCell>
                              <TableCell>
                                 <Badge className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full border-none ${
                                   t.status === "Success" ? "bg-green-500/10 text-green-500" : 
@@ -687,7 +642,7 @@ export default function AgentDashboard() {
                                   "bg-primary/10 text-primary"
                                 }`}>{t.status}</Badge>
                              </TableCell>
-                             <TableCell className="text-right px-8 text-[9px] text-white/40 uppercase font-bold">{new Date(t.initiationTime).toLocaleString()}</TableCell>
+                             <TableCell className="text-right px-8 text-[9px] text-white/40 uppercase font-bold">{new Date(t.initiation_time).toLocaleString()}</TableCell>
                           </TableRow>
                         ))}
                         {!referredTrades?.length && (
@@ -710,11 +665,11 @@ export default function AgentDashboard() {
                       <div className="space-y-6 relative z-10">
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex items-center gap-4 min-w-0 flex-1">
-                            {off.iconCid || off.cryptoAssetId?.toUpperCase().includes("USDT") ? (
-                              <div className={`relative w-12 h-12 rounded-full overflow-hidden shrink-0 group-hover/card:scale-110 transition-transform duration-500 ${off.cryptoAssetId?.toUpperCase().includes("USDT") ? '' : 'border border-white/10 bg-white/5 shadow-inner'}`}>
+                            {off.icon_cid || off.crypto_asset_id?.toUpperCase().includes("USDT") ? (
+                              <div className={`relative w-12 h-12 rounded-full overflow-hidden shrink-0 group-hover/card:scale-110 transition-transform duration-500 ${off.crypto_asset_id?.toUpperCase().includes("USDT") ? '' : 'border border-white/10 bg-white/5 shadow-inner'}`}>
                                 <Image 
-                                  src={`https://ipfs.io/ipfs/${off.cryptoAssetId?.toUpperCase().includes("USDT") ? "bafybeicygbg5kw4b5wyzx7rsv7zen5qmgda6jkn57phoqhp67jji7fpefa" : off.iconCid}`} 
-                                  alt={off.cryptoAssetId} 
+                                  src={`https://ipfs.io/ipfs/${off.crypto_asset_id?.toUpperCase().includes("USDT") ? "bafybeicygbg5kw4b5wyzx7rsv7zen5qmgda6jkn57phoqhp67jji7fpefa" : off.icon_cid}`} 
+                                  alt={off.crypto_asset_id} 
                                   fill 
                                   className="object-cover scale-[0.8]" 
                                   unoptimized 
@@ -727,10 +682,10 @@ export default function AgentDashboard() {
                             )}
                             <div className="flex flex-col min-w-0 flex-1 gap-0.5">
                               <p className="text-[10px] text-primary font-black uppercase tracking-[0.2em] truncate opacity-80 mb-0.5">
-                                {off.displayName}
+                                {off.display_name}
                               </p>
                               <p className="font-headline font-black text-xl uppercase tracking-tighter text-white group-hover/card:text-primary transition-colors truncate">
-                                {off.cryptoAssetId}
+                                {off.crypto_asset_id}
                               </p>
                             </div>
                           </div>
@@ -740,7 +695,7 @@ export default function AgentDashboard() {
                       <div className="pt-6 border-t border-white/5 flex justify-between items-end relative z-10">
                         <div className="flex flex-col gap-1">
                           <span className="text-hierarchy-label tracking-widest">Market Rate</span>
-                          <p className="text-2xl font-headline font-black text-white leading-none italic group-hover/card:text-primary transition-colors tracking-tighter">{off.fixedPricePerCrypto} <span className="text-[10px] opacity-40 not-italic font-bold ml-1">{off.fiatCurrency}</span></p>
+                          <p className="text-2xl font-headline font-black text-white leading-none italic group-hover/card:text-primary transition-colors tracking-tighter">{off.fixed_price_per_crypto} <span className="text-[10px] opacity-40 not-italic font-bold ml-1">{off.fiat_currency}</span></p>
                         </div>
                         <Badge variant="outline" className="text-[9px] py-1 px-3 border-green-500/20 text-green-500 uppercase font-black tracking-widest bg-green-500/5 rounded-full">
                           Live
@@ -832,7 +787,7 @@ export default function AgentDashboard() {
                            </div>
                            <div className="space-y-2">
                               <Label className="text-[9px] uppercase font-bold opacity-50 ml-1">Referral Code</Label>
-                              <Input disabled value={userData?.referralCode || ""} className="bg-white/5 border-white/10 h-14 rounded-xl text-primary font-mono font-black" />
+                              <Input disabled value={userData?.referral_code || ""} className="bg-white/5 border-white/10 h-14 rounded-xl text-primary font-mono font-black" />
                            </div>
                         </div>
                      </div>
@@ -851,7 +806,7 @@ export default function AgentDashboard() {
                               </div>
                               <div className="flex justify-between items-center">
                                  <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Commission Rate</span>
-                                 <span className="text-xs font-black text-primary uppercase">{traderData?.referralCommission || 0}%</span>
+                                 <span className="text-xs font-black text-primary uppercase">{traderData?.referral_commission || 0}%</span>
                               </div>
                               <div className="flex justify-between items-center">
                                  <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Node Status</span>
@@ -878,7 +833,7 @@ export default function AgentDashboard() {
           <AlertDialogDescription className="text-white/40 uppercase text-[10px] tracking-widest font-bold leading-relaxed">Closing your agent session will disable your real-time network tracking until your next secure authorization.</AlertDialogDescription>
           <AlertDialogFooter className="mt-8 gap-4">
             <AlertDialogCancel className="h-14 rounded-2xl border-white/10 bg-white/5 text-[10px] font-bold uppercase tracking-widest text-white hover:bg-white/10 transition-all">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => signOut(auth)} className="bg-red-500 hover:bg-red-600 rounded-2xl h-14 text-[10px] font-bold uppercase tracking-widest text-white glow-primary transition-all">Sign Out</AlertDialogAction>
+            <AlertDialogAction onClick={() => signOut()} className="bg-red-500 hover:bg-red-600 rounded-2xl h-14 text-[10px] font-bold uppercase tracking-widest text-white glow-primary transition-all">Sign Out</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

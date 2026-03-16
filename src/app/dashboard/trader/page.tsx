@@ -51,22 +51,22 @@ import {
   Users,
   Percent,
 } from "lucide-react";
-import { useUser, useFirestore, useCollection, useMemoFirebase, useDoc } from "@/firebase";
-import { collection, query, where, doc, setDoc, updateDoc, increment, orderBy, onSnapshot, limit, runTransaction } from "firebase/firestore";
+import { useSupabaseAuth } from "@/lib/supabase-auth-provider";
+import { useSupabaseQuery, useSupabaseDoc } from "@/hooks/use-supabase";
+import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/firebase";
-import { signOut, createUserWithEmailAndPassword, getAuth } from "firebase/auth";
-import { initializeApp, deleteApp } from "firebase/app";
-import { firebaseConfig } from "@/firebase/config";
 import { useToast } from "@/hooks/use-toast";
-import { addDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { ISTTimer } from "@/components/ui/ist-timer";
 import { USDTGoldLogo } from "@/components/logos/USDTGoldLogo";
 import { USDTOriginalLogo } from "@/components/logos/USDTOriginalLogo";
 import Image from "next/image";
-import { User, TradeTransaction, WithdrawalRequest, TraderOffer } from "@/types";
+import { User, TradeTransaction, WithdrawalRequest, TraderOffer, Profile } from "@/types";
 
 export default function TraderDashboard() {
+  const router = useRouter();
+  const { toast } = useToast();
+  const { user, loading: isUserLoading, signOut } = useSupabaseAuth();
+
   const [activeTab, setActiveTab] = useState("offers");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isAddOfferOpen, setIsAddOfferOpen] = useState(false);
@@ -88,71 +88,51 @@ export default function TraderDashboard() {
   const [isProvisioningAgent, setIsProvisioningAgent] = useState(false);
   const [isAgentProvisionOpen, setIsAgentProvisionOpen] = useState(false);
 
-  const generateAgentUsername = () => {
-    const prefixes = ["crypto", "node", "nexus", "pro", "zen", "alpha", "flux", "bit", "vault", "link"];
-    const suffixes = ["agent", "trader", "expert", "master", "partner", "lead", "pulse", "core"];
-    const randomPrefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-    const randomSuffix = suffixes[Math.floor(Math.random() * suffixes.length)];
-    const randomNumber = Math.floor(Math.random() * 999);
-    setNewAgentUsername(`${randomPrefix}_${randomSuffix}_${randomNumber}`);
-  };
+  const { data: userData, loading: isUserDataLoading } = useSupabaseDoc<Profile>("profiles", user?.id);
 
-  const generateReferralCode = () => {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    let result = "";
-    for (let i = 0; i < 8; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
-  };
+  const { data: pendingTrades } = useSupabaseQuery<TradeTransaction>("trade_transactions", {
+    select: "*",
+    eq: ["trader_id", user?.id],
+    order: ["initiation_time", { ascending: false }],
+    limit: 100
+  });
 
-  const { user, isUserLoading } = useUser();
-  const db = useFirestore();
-  const auth = useAuth();
-  const router = useRouter();
-  const { toast } = useToast();
+  const { data: myOffers } = useSupabaseQuery<TraderOffer>("trader_buy_offers", {
+    eq: ["trader_id", user?.id],
+    order: ["created_at", { ascending: false }],
+    limit: 50
+  });
 
-  // FORCED RE-FETCH: bypass memoization for user doc
-  const [userData, setUserData] = useState<any>(null);
-  const [isUserDataLoading, setIsUserDataLoading] = useState(true);
+  const { data: successTrades } = useSupabaseQuery<TradeTransaction>("trade_transactions", {
+    select: "*",
+    eq: ["trader_id", user?.id],
+    order: ["initiation_time", { ascending: false }],
+    limit: 200
+  });
 
-  useEffect(() => {
-    if (user) {
-      setIsUserDataLoading(true);
-      const unsub = onSnapshot(doc(db, "users", user.uid), (doc) => {
-        setUserData(doc.data());
-        setIsUserDataLoading(false);
-      });
-      return () => unsub();
-    } else if (!isUserLoading) {
-      setIsUserDataLoading(false);
-    }
-  }, [user, isUserLoading, db]);
+  const { data: gateways } = useSupabaseQuery<any>("fiat_payment_methods", {
+    eq: ["user_id", user?.id],
+    order: ["created_at", { ascending: false }],
+    limit: 20
+  });
 
-  const pendingTradesQuery = useMemoFirebase(() => user ? query(collection(db, "trade_transactions"), where("traderId", "==", user.uid), where("status", "in", ["Paid", "Hold", "KYC Required"]), orderBy("initiationTime", "desc"), limit(100)) : null, [db, user?.uid]);
-  const { data: pendingTrades } = useCollection(pendingTradesQuery);
+  const { data: allWithdrawals } = useSupabaseQuery<WithdrawalRequest>("withdrawals", {
+    eq: ["trader_id", user?.id],
+    order: ["created_at", { ascending: false }],
+    limit: 100
+  });
 
-  const myOffersQuery = useMemoFirebase(() => user ? query(collection(db, "trader_buy_offers"), where("traderId", "==", user.uid), orderBy("createdAt", "desc"), limit(50)) : null, [db, user?.uid]);
-  const { data: myOffers } = useCollection(myOffersQuery);
+  const { data: myAgents } = useSupabaseQuery<Profile>("profiles", {
+    eq: ["trader_id", user?.id],
+    limit: 50
+  });
 
-  const successTradesQuery = useMemoFirebase(() => user ? query(collection(db, "trade_transactions"), where("traderId", "==", user.uid), where("status", "==", "Success"), orderBy("initiationTime", "desc"), limit(200)) : null, [db, user?.uid]);
-  const { data: successTrades } = useCollection(successTradesQuery);
-
-  const gatewaysQuery = useMemoFirebase(() => user ? query(collection(db, "users", user.uid, "fiat_payment_methods"), orderBy("createdAt", "desc"), limit(20)) : null, [db, user?.uid]);
-  const { data: gateways } = useCollection(gatewaysQuery);
-
-  const myWithdrawalsQuery = useMemoFirebase(() => user ? query(collection(db, "withdrawals"), where("traderId", "==", user.uid), orderBy("createdAt", "desc"), limit(100)) : null, [db, user?.uid]);
-  const { data: allWithdrawals } = useCollection(myWithdrawalsQuery);
-
-  const myAgentsQuery = useMemoFirebase(() => user ? query(collection(db, "users"), where("traderId", "==", user.uid), where("role", "==", "agent"), limit(50)) : null, [db, user?.uid]);
-  const { data: myAgents } = useCollection(myAgentsQuery);
-
-  const brandingDocRef = useMemoFirebase(() => doc(db, "settings", "branding"), [db]);
-  const { data: brandingSettings } = useDoc(brandingDocRef);
+  const { data: globalSettings } = useSupabaseDoc<any>("global_settings", "default");
+  const brandingSettings = globalSettings?.branding;
 
   const totalCryptoReceived = useMemo(() => {
     if (!successTrades) return 0;
-    return successTrades.reduce((acc, trade) => acc + (trade.cryptoAmount || 0), 0);
+    return successTrades.reduce((acc, trade) => acc + (trade.crypto_amount || 0), 0);
   }, [successTrades]);
 
   const totalMoneyPaid = useMemo(() => {
@@ -163,7 +143,7 @@ export default function TraderDashboard() {
   }, [allWithdrawals]);
 
   const totalMoneyToPay = useMemo(() => {
-    const totalFiatReceived = successTrades?.reduce((acc, trade) => acc + (trade.fiatAmount || 0), 0) || 0;
+    const totalFiatReceived = successTrades?.reduce((acc, trade) => acc + (trade.fiat_amount || 0), 0) || 0;
     return totalFiatReceived - totalMoneyPaid;
   }, [successTrades, totalMoneyPaid]);
 
@@ -187,11 +167,11 @@ export default function TraderDashboard() {
     if (!user) return;
     const formData = new FormData(e.currentTarget);
     const updates = {
-      fullName: formData.get("fullName"),
+      full_name: formData.get("fullName"),
       username: formData.get("username")
     };
-    updateDocumentNonBlocking(doc(db, "users", user.uid), updates);
-    toast({ title: "Profile Updated" });
+    const { error } = await supabase.from("profiles").update(updates).eq("id", user.id);
+    if (!error) toast({ title: "Profile Updated" });
   };
 
   const handleUpdateWallets = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -199,16 +179,34 @@ export default function TraderDashboard() {
     if (!user) return;
     const formData = new FormData(e.currentTarget);
     const updates = {
-      walletAddressTrc20: formData.get("trc20")?.toString().trim() || "",
-      walletQrTrc20: formData.get("trc20Qr")?.toString().trim() || "",
-      walletAddressBep20: formData.get("bep20")?.toString().trim() || "",
-      walletQrBep20: formData.get("bep20Qr")?.toString().trim() || "",
-      walletAddressErc20: formData.get("erc20")?.toString().trim() || "",
-      walletQrErc20: formData.get("erc20Qr")?.toString().trim() || "",
-      referralCommission: parseFloat(formData.get("commission")?.toString() || "0")
+      wallet_address_trc20: formData.get("trc20")?.toString().trim() || "",
+      wallet_qr_trc20: formData.get("trc20Qr")?.toString().trim() || "",
+      wallet_address_bep20: formData.get("bep20")?.toString().trim() || "",
+      wallet_qr_bep20: formData.get("bep20Qr")?.toString().trim() || "",
+      wallet_address_erc20: formData.get("erc20")?.toString().trim() || "",
+      wallet_qr_erc20: formData.get("erc20Qr")?.toString().trim() || "",
+      referral_commission: parseFloat(formData.get("commission")?.toString() || "0")
     };
-    updateDocumentNonBlocking(doc(db, "users", user.uid), updates);
-    toast({ title: "Institutional Wallets Updated", description: "All new offers will use these endpoints." });
+    const { error } = await supabase.from("profiles").update(updates).eq("id", user.id);
+    if (!error) toast({ title: "Institutional Wallets Updated", description: "All new offers will use these endpoints." });
+  };
+
+  const generateAgentUsername = () => {
+    const prefixes = ["crypto", "node", "nexus", "pro", "zen", "alpha", "flux", "bit", "vault", "link"];
+    const suffixes = ["agent", "trader", "expert", "master", "partner", "lead", "pulse", "core"];
+    const randomPrefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+    const randomSuffix = suffixes[Math.floor(Math.random() * suffixes.length)];
+    const randomNumber = Math.floor(Math.random() * 999);
+    setNewAgentUsername(`${randomPrefix}_${randomSuffix}_${randomNumber}`);
+  };
+
+  const generateReferralCode = () => {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let result = "";
+    for (let i = 0; i < 8; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
   };
 
   const handleProvisionAgent = async () => {
@@ -219,38 +217,34 @@ export default function TraderDashboard() {
 
     setIsProvisioningAgent(true);
     try {
-      // 1. Create temporary Firebase app to create Auth account
-      const tempAppId = `temp-agent-app-${Date.now()}`;
-      const tempApp = initializeApp(firebaseConfig, tempAppId);
-      const tempAuth = getAuth(tempApp);
-      
-      const userCredential = await createUserWithEmailAndPassword(tempAuth, newAgentEmail.trim().toLowerCase(), newAgentPass);
-      const uid = userCredential.user.uid;
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: newAgentEmail.trim().toLowerCase(),
+        password: newAgentPass,
+        options: {
+          data: {
+            username: newAgentUsername.trim().toLowerCase().replace(/\s+/g, '_'),
+            role: "agent"
+          }
+        }
+      });
 
-      // 2. Create Firestore profile
+      if (authError) throw authError;
+      if (!authData.user) throw new Error("SignUp failed");
+
       const agentData = {
-        id: uid,
+        id: authData.user.id,
         email: newAgentEmail.trim().toLowerCase(),
         username: newAgentUsername.trim().toLowerCase().replace(/\s+/g, '_'),
-        password: newAgentPass,
+        password_hash: newAgentPass,
         role: "agent",
-        traderId: user.uid,
-        traderUsername: userData?.username || "Verified Node",
-        isActive: true,
-        status: "active",
-        createdAt: new Date().toISOString(),
-        referralCode: generateReferralCode()
+        trader_id: user.id,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        referral_code: generateReferralCode()
       };
 
-      await setDoc(doc(db, "users", uid), agentData);
-      
-      // Also update trader's document to ensure we have a link (though query handles it)
-      await updateDoc(doc(db, "users", user.uid), {
-        hasAgents: true
-      });
-      
-      // Cleanup temp app
-      await deleteApp(tempApp);
+      const { error: profileError } = await supabase.from("profiles").upsert(agentData);
+      if (profileError) throw profileError;
 
       toast({ title: "Agent Provisioned", description: `${newAgentUsername} is now authorized for your node.` });
       setNewAgentEmail("");
@@ -259,11 +253,7 @@ export default function TraderDashboard() {
       setIsAgentProvisionOpen(false);
     } catch (e: any) {
       console.error(e);
-      if (e.code === 'auth/email-already-in-use') {
-        toast({ variant: "destructive", title: "Identity Conflict", description: "This email is already registered on the protocol." });
-      } else {
-        toast({ variant: "destructive", title: "Provisioning Failed", description: e.message });
-      }
+      toast({ variant: "destructive", title: "Provisioning Failed", description: e.message });
     } finally {
       setIsProvisioningAgent(false);
     }
@@ -295,38 +285,35 @@ export default function TraderDashboard() {
   const handleOpenPosition = async () => {
     if (!user || !offerPrice) return;
     
-    const offerData: Omit<TraderOffer, 'id'> = {
-      traderId: user.uid,
-      traderUsername: userData?.username || "Verified Node",
-      displayName: offerDisplayName.trim() || userData?.username || "Verified Node",
-      cryptoAssetId: offerCrypto.toUpperCase(),
+    const offerData = {
+      trader_id: user.id,
+      trader_username: userData?.username || "Verified Node",
+      display_name: offerDisplayName.trim() || userData?.username || "Verified Node",
+      crypto_asset_id: offerCrypto.toUpperCase(),
       network: offerNetwork.toUpperCase(),
-      fiatCurrency: offerFiat.toUpperCase(),
-      fixedPricePerCrypto: parseFloat(offerPrice),
+      fiat_currency: offerFiat.toUpperCase(),
+      fixed_price_per_crypto: parseFloat(offerPrice),
       description: offerDescription,
-      iconCid: offerIconCid.trim(),
-      // Use institutional wallets from settings
-      walletAddressTrc20: userData?.walletAddressTrc20 || "",
-      walletAddressBep20: userData?.walletAddressBep20 || "",
-      walletAddressErc20: userData?.walletAddressErc20 || "",
-      walletQrTrc20: userData?.walletQrTrc20 || "",
-      walletQrBep20: userData?.walletQrBep20 || "",
-      walletQrErc20: userData?.walletQrErc20 || "",
-      status: "Active",
-      createdAt: new Date().toISOString()
+      icon_cid: offerIconCid.trim(),
+      wallet_address_trc20: userData?.wallet_address_trc20 || "",
+      wallet_address_bep20: userData?.wallet_address_bep20 || "",
+      wallet_address_erc20: userData?.wallet_address_erc20 || "",
+      wallet_qr_trc20: userData?.wallet_qr_trc20 || "",
+      wallet_qr_bep20: userData?.wallet_qr_bep20 || "",
+      wallet_qr_erc20: userData?.wallet_qr_erc20 || "",
+      status: "Active"
     };
 
     if (editingOfferId) {
-      updateDocumentNonBlocking(doc(db, "trader_buy_offers", editingOfferId), offerData);
-      toast({ title: "Position Updated" });
+      const { error } = await supabase.from("trader_buy_offers").update(offerData).eq("id", editingOfferId);
+      if (!error) toast({ title: "Position Updated" });
     } else {
-      addDocumentNonBlocking(collection(db, "trader_buy_offers"), offerData);
-      toast({ title: "Position Opened" });
+      const { error } = await supabase.from("trader_buy_offers").insert(offerData);
+      if (!error) toast({ title: "Position Opened" });
     }
 
     setIsAddOfferOpen(false);
     setEditingOfferId(null);
-    // Clear states
     resetOfferForm();
   };
 
@@ -342,60 +329,45 @@ export default function TraderDashboard() {
 
   const handleEditOffer = (off: TraderOffer) => {
     setEditingOfferId(off.id);
-    setOfferCrypto(off.cryptoAssetId);
+    setOfferCrypto(off.crypto_asset_id);
     setOfferNetwork(off.network);
-    setOfferFiat(off.fiatCurrency);
-    setOfferPrice(off.fixedPricePerCrypto.toString());
-    setOfferDisplayName(off.displayName || "");
+    setOfferFiat(off.fiat_currency);
+    setOfferPrice(off.fixed_price_per_crypto.toString());
+    setOfferDisplayName(off.display_name || "");
     setOfferDescription(off.description || "");
-    setOfferIconCid(off.iconCid || "");
+    setOfferIconCid(off.icon_cid || "");
     setIsAddOfferOpen(true);
   };
 
   const handleDuplicateOffer = (off: TraderOffer) => {
-    setEditingOfferId(null); // Ensure it's a new document
-    setOfferCrypto(off.cryptoAssetId);
+    setEditingOfferId(null); 
+    setOfferCrypto(off.crypto_asset_id);
     setOfferNetwork(off.network);
-    setOfferFiat(off.fiatCurrency);
-    setOfferPrice(off.fixedPricePerCrypto.toString());
-    setOfferDisplayName(off.displayName || "");
+    setOfferFiat(off.fiat_currency);
+    setOfferPrice(off.fixed_price_per_crypto.toString());
+    setOfferDisplayName(off.display_name || "");
     setOfferDescription(off.description || "");
-    setOfferIconCid(off.iconCid || "");
+    setOfferIconCid(off.icon_cid || "");
     setIsAddOfferOpen(true);
     toast({ title: "Draft Created", description: "Offer details duplicated. Review and publish." });
   };
 
   const handleApproveTrade = async (trade: TradeTransaction) => {
     try {
-      await runTransaction(db, async (transaction) => {
-        const tradeDocRef = doc(db, "trade_transactions", trade.id);
-        const tradeDoc = await transaction.get(tradeDocRef);
-        
-        if (!tradeDoc.exists()) {
-          throw "Trade document does not exist!";
-        }
-        
-        const currentData = tradeDoc.data();
-        if (!currentData || currentData.status === "Success") {
-          throw "Trade already approved!";
-        }
+      const { error: tradeError } = await supabase.from("trade_transactions").update({ status: "Success" }).eq("id", trade.id);
+      if (tradeError) throw tradeError;
 
-        transaction.update(tradeDocRef, { status: "Success" });
-        
-        // Update Client Balance (Receive Fiat)
-        const clientRef = doc(db, "users", trade.clientId);
-        transaction.update(clientRef, {
-          balance: increment(trade.fiatAmount)
-        });
+      // Update Client Balance
+      const { data: clientProfile } = await supabase.from("profiles").select("balance").eq("id", trade.client_id).single();
+      const newClientBalance = (clientProfile?.balance || 0) + trade.fiat_amount;
+      await supabase.from("profiles").update({ balance: newClientBalance }).eq("id", trade.client_id);
 
-        // Update Trader Balance (Track Earnings/Assets Received Volume)
-        if (user) {
-          const traderRef = doc(db, "users", user.uid);
-          transaction.update(traderRef, {
-            balance: increment(trade.fiatAmount)
-          });
-        }
-      });
+      // Update Trader Balance
+      if (user) {
+        const { data: traderProfile } = await supabase.from("profiles").select("balance").eq("id", user.id).single();
+        const newTraderBalance = (traderProfile?.balance || 0) + trade.fiat_amount;
+        await supabase.from("profiles").update({ balance: newTraderBalance }).eq("id", user.id);
+      }
 
       toast({ title: "Trade Approved", description: "Funds released to client wallet." });
     } catch (e) {
@@ -406,8 +378,8 @@ export default function TraderDashboard() {
 
   const handleTradeStatusUpdate = async (trade: TradeTransaction, newStatus: string) => {
     try {
-      await updateDoc(doc(db, "trade_transactions", trade.id), { status: newStatus });
-      toast({ title: "Status Updated", description: `Trade status changed to ${newStatus}.` });
+      const { error } = await supabase.from("trade_transactions").update({ status: newStatus }).eq("id", trade.id);
+      if (!error) toast({ title: "Status Updated", description: `Trade status changed to ${newStatus}.` });
     } catch (e) {
       console.error(e);
       toast({ variant: "destructive", title: "Update Failed", description: "Failed to update trade status." });
@@ -417,34 +389,22 @@ export default function TraderDashboard() {
   const handleWithdrawalAction = async (withdrawal: WithdrawalRequest, newStatus: string) => {
     try {
       if (newStatus === "Success") {
-        await runTransaction(db, async (transaction) => {
-          const withdrawalRef = doc(db, "withdrawals", withdrawal.id);
-          const withdrawalDoc = await transaction.get(withdrawalRef);
-          
-          const withdrawalData = withdrawalDoc.data();
-          if (!withdrawalData || withdrawalData.status === "Success") throw "Already processed";
+        const { data: userProfile } = await supabase.from("profiles").select("balance").eq("id", withdrawal.user_id).single();
+        const currentBalance = userProfile?.balance || 0;
+        
+        if (currentBalance < withdrawal.amount) {
+          throw "Insufficient Balance";
+        }
 
-          const userRef = doc(db, "users", withdrawal.userId);
-          const userSnap = await transaction.get(userRef);
-          
-          if (!userSnap.exists()) throw "User not found";
-          
-          const userData = userSnap.data();
-          const currentBalance = userData?.balance || 0;
-          if (currentBalance < withdrawal.amount) {
-             throw "Insufficient Balance";
-          }
+        const { error: withdrawalError } = await supabase.from("withdrawals").update({ status: "Success", processed_at: new Date().toISOString() }).eq("id", withdrawal.id);
+        if (withdrawalError) throw withdrawalError;
 
-          // Deduct balance and update status
-          transaction.update(userRef, { balance: increment(-withdrawal.amount) });
-          transaction.update(withdrawalRef, { status: "Success", processedAt: new Date().toISOString() });
-        });
+        await supabase.from("profiles").update({ balance: currentBalance - withdrawal.amount }).eq("id", withdrawal.user_id);
         
         toast({ title: "Withdrawal Marked as Paid", description: "Balance deducted and status updated." });
       } else {
-        // Just update status (Hold, Verification Required)
-        await updateDoc(doc(db, "withdrawals", withdrawal.id), { status: newStatus });
-        toast({ title: "Status Updated", description: `Withdrawal status changed to ${newStatus}.` });
+        const { error } = await supabase.from("withdrawals").update({ status: newStatus }).eq("id", withdrawal.id);
+        if (!error) toast({ title: "Status Updated", description: `Withdrawal status changed to ${newStatus}.` });
       }
     } catch (e) {
       console.error(e);
@@ -608,11 +568,11 @@ export default function TraderDashboard() {
                 <div className="space-y-6 relative z-10">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-center gap-4 min-w-0 flex-1">
-                      {off.iconCid || off.cryptoAssetId?.toUpperCase().includes("USDT") ? (
-                        <div className={`relative w-12 h-12 rounded-full overflow-hidden shrink-0 group-hover/card:scale-110 transition-transform duration-500 ${off.cryptoAssetId?.toUpperCase().includes("USDT") ? '' : 'border border-white/10 bg-white/5 shadow-inner'}`}>
+                      {off.icon_cid || off.crypto_asset_id?.toUpperCase().includes("USDT") ? (
+                        <div className={`relative w-12 h-12 rounded-full overflow-hidden shrink-0 group-hover/card:scale-110 transition-transform duration-500 ${off.crypto_asset_id?.toUpperCase().includes("USDT") ? '' : 'border border-white/10 bg-white/5 shadow-inner'}`}>
                           <Image 
-                            src={`https://ipfs.io/ipfs/${off.cryptoAssetId?.toUpperCase().includes("USDT") ? "bafybeicygbg5kw4b5wyzx7rsv7zen5qmgda6jkn57phoqhp67jji7fpefa" : off.iconCid}`} 
-                            alt={off.cryptoAssetId} 
+                            src={`https://ipfs.io/ipfs/${off.crypto_asset_id?.toUpperCase().includes("USDT") ? "bafybeicygbg5kw4b5wyzx7rsv7zen5qmgda6jkn57phoqhp67jji7fpefa" : off.icon_cid}`} 
+                            alt={off.crypto_asset_id} 
                             fill 
                             className="object-cover scale-[0.8]" 
                             unoptimized 
@@ -625,10 +585,10 @@ export default function TraderDashboard() {
                       )}
                       <div className="flex flex-col min-w-0 flex-1 gap-0.5">
                         <p className="text-[10px] text-primary font-black uppercase tracking-[0.2em] truncate opacity-80 mb-0.5">
-                          {off.displayName}
+                          {off.display_name}
                         </p>
                         <p className="font-headline font-black text-xl uppercase tracking-tighter text-white group-hover/card:text-primary transition-colors truncate">
-                          {off.cryptoAssetId}
+                          {off.crypto_asset_id}
                         </p>
                       </div>
                     </div>
@@ -642,7 +602,7 @@ export default function TraderDashboard() {
                 <div className="pt-6 border-t border-white/5 flex justify-between items-end relative z-10">
                   <div className="flex flex-col gap-1">
                     <span className="text-hierarchy-label tracking-widest">Market Rate</span>
-                    <p className="text-2xl font-headline font-black text-white leading-none italic group-hover/card:text-primary transition-colors tracking-tighter">{off.fixedPricePerCrypto} <span className="text-[10px] opacity-40 not-italic font-bold ml-1">{off.fiatCurrency}</span></p>
+                    <p className="text-2xl font-headline font-black text-white leading-none italic group-hover/card:text-primary transition-colors tracking-tighter">{off.fixed_price_per_crypto} <span className="text-[10px] opacity-40 not-italic font-bold ml-1">{off.fiat_currency}</span></p>
                   </div>
                   <Badge variant="outline" className={`text-[9px] py-1 px-3 border-green-500/20 text-green-500 uppercase font-black tracking-widest bg-green-500/5 rounded-full`}>
                     {off.status}
@@ -684,12 +644,12 @@ export default function TraderDashboard() {
                             <TableCell className="px-8 py-4 font-mono text-[10px] text-white/40">#{t.id.slice(-6).toUpperCase()}</TableCell>
                             <TableCell className="px-8 py-4">
                                <div className="flex flex-col">
-                                  <span className="text-[11px] font-black uppercase tracking-widest text-white">{t.clientUsername}</span>
+                                  <span className="text-[11px] font-black uppercase tracking-widest text-white">{t.client_username}</span>
                                   <span className="text-[8px] font-bold uppercase tracking-widest text-white/20">Client Node</span>
                                </div>
                             </TableCell>
-                            <TableCell className="px-8 py-4 font-black text-white text-xs italic">{t.cryptoAmount} {t.cryptoAssetId}</TableCell>
-                            <TableCell className="px-8 py-4 font-black text-primary text-xs italic">₹{t.fiatAmount.toLocaleString()}</TableCell>
+                            <TableCell className="px-8 py-4 font-black text-white text-xs italic">{t.crypto_amount} {t.crypto_asset_id}</TableCell>
+                            <TableCell className="px-8 py-4 font-black text-primary text-xs italic">₹{t.fiat_amount.toLocaleString()}</TableCell>
                             <TableCell className="px-8 py-4">
                                <Badge variant="outline" className={`text-[8px] font-black uppercase tracking-widest border-none px-2 py-0.5 rounded-full ${t.status === 'Paid' ? 'bg-amber-500/10 text-amber-500' : 'bg-primary/10 text-primary'}`}>{t.status}</Badge>
                             </TableCell>
@@ -736,8 +696,8 @@ export default function TraderDashboard() {
                             </TableCell>
                             <TableCell className="px-8 py-4">
                                <div className="flex flex-col">
-                                  <span className="text-[10px] font-black text-white/60 uppercase tracking-widest">{w.gatewayDetails?.type}</span>
-                                  <span className="text-[9px] font-mono text-white/40">{w.gatewayDetails?.detail}</span>
+                                  <span className="text-[10px] font-black text-white/60 uppercase tracking-widest">{w.gateway_details?.type}</span>
+                                  <span className="text-[9px] font-mono text-white/40">{w.gateway_details?.detail}</span>
                                </div>
                             </TableCell>
                             <TableCell className="px-8 py-4 font-black text-white text-xs italic">₹{w.amount.toLocaleString()}</TableCell>
@@ -787,14 +747,14 @@ export default function TraderDashboard() {
                                   </div>
                                </div>
                             </TableCell>
-                            <TableCell className="px-8 py-4 text-center font-mono text-[10px] text-primary font-black tracking-widest">{a.referralCode}</TableCell>
+                            <TableCell className="px-8 py-4 text-center font-mono text-[10px] text-primary font-black tracking-widest">{a.referral_code}</TableCell>
                             <TableCell className="px-8 py-4 text-center">
                                <div className="flex items-center justify-center gap-2">
-                                  <div className={`w-1.5 h-1.5 rounded-full ${a.isActive ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'bg-red-500'}`} />
-                                  <span className="text-[9px] font-black uppercase tracking-widest text-white/40">{a.isActive ? 'Active' : 'Locked'}</span>
+                                  <div className={`w-1.5 h-1.5 rounded-full ${a.is_active ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'bg-red-500'}`} />
+                                  <span className="text-[9px] font-black uppercase tracking-widest text-white/40">{a.is_active ? 'Active' : 'Locked'}</span>
                                </div>
                             </TableCell>
-                            <TableCell className="px-8 py-4 text-right text-[9px] font-bold uppercase tracking-widest text-white/20">{new Date(a.createdAt).toLocaleDateString()}</TableCell>
+                            <TableCell className="px-8 py-4 text-right text-[9px] font-bold uppercase tracking-widest text-white/20">{new Date(a.created_at).toLocaleDateString()}</TableCell>
                          </TableRow>
                       ))}
                    </TableBody>
@@ -825,10 +785,10 @@ export default function TraderDashboard() {
                       ) : successTrades?.map((t) => (
                          <TableRow key={t.id} className="border-white/5 hover:bg-white/[0.02] transition-colors group">
                             <TableCell className="px-8 py-4 font-mono text-[10px] text-white/40">#{t.id.slice(-6).toUpperCase()}</TableCell>
-                            <TableCell className="px-8 py-4 text-[11px] font-black uppercase tracking-widest text-white">{t.clientUsername}</TableCell>
-                            <TableCell className="px-8 py-4 font-black text-white text-xs italic">{t.cryptoAmount} {t.cryptoAssetId}</TableCell>
-                            <TableCell className="px-8 py-4 font-black text-green-500 text-xs italic">₹{t.fiatAmount.toLocaleString()}</TableCell>
-                            <TableCell className="px-8 py-4 text-right text-[9px] font-bold uppercase tracking-widest text-white/20">{new Date(t.initiationTime).toLocaleString()}</TableCell>
+                            <TableCell className="px-8 py-4 text-[11px] font-black uppercase tracking-widest text-white">{t.client_username}</TableCell>
+                            <TableCell className="px-8 py-4 font-black text-white text-xs italic">{t.crypto_amount} {t.crypto_asset_id}</TableCell>
+                            <TableCell className="px-8 py-4 font-black text-green-500 text-xs italic">₹{t.fiat_amount.toLocaleString()}</TableCell>
+                            <TableCell className="px-8 py-4 text-right text-[9px] font-bold uppercase tracking-widest text-white/20">{new Date(t.initiation_time).toLocaleString()}</TableCell>
                          </TableRow>
                       ))}
                    </TableBody>
@@ -845,7 +805,7 @@ export default function TraderDashboard() {
                <form onSubmit={handleUpdateProfile} className="space-y-6">
                  <div className="space-y-3">
                    <Label className="text-hierarchy-label ml-2">Display Name</Label>
-                   <Input name="fullName" defaultValue={userData?.fullName} placeholder="Full Authority Name" className="bg-white/5 border-white/10 h-14 rounded-xl text-white px-6 focus:ring-primary/50 font-bold" />
+                   <Input name="fullName" defaultValue={userData?.full_name} placeholder="Full Authority Name" className="bg-white/5 border-white/10 h-14 rounded-xl text-white px-6 focus:ring-primary/50 font-bold" />
                  </div>
                  <div className="space-y-3">
                    <Label className="text-hierarchy-label ml-2">Node Alias</Label>
@@ -864,27 +824,27 @@ export default function TraderDashboard() {
                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-3">
                       <Label className="text-hierarchy-label ml-2">TRC20 Address</Label>
-                      <Input name="trc20" defaultValue={userData?.walletAddressTrc20} placeholder="T..." className="bg-white/5 border-white/10 h-14 rounded-xl text-[10px] font-mono" />
+                      <Input name="trc20" defaultValue={userData?.wallet_address_trc20} placeholder="T..." className="bg-white/5 border-white/10 h-14 rounded-xl text-[10px] font-mono" />
                     </div>
                     <div className="space-y-3">
                       <Label className="text-hierarchy-label ml-2">TRC20 QR (CID)</Label>
-                      <Input name="trc20Qr" defaultValue={userData?.walletQrTrc20} placeholder="bafy..." className="bg-white/5 border-white/10 h-14 rounded-xl text-[10px] font-mono" />
+                      <Input name="trc20Qr" defaultValue={userData?.wallet_qr_trc20} placeholder="bafy..." className="bg-white/5 border-white/10 h-14 rounded-xl text-[10px] font-mono" />
                     </div>
                  </div>
                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-3">
                       <Label className="text-hierarchy-label ml-2">BEP20 Address</Label>
-                      <Input name="bep20" defaultValue={userData?.walletAddressBep20} placeholder="0x..." className="bg-white/5 border-white/10 h-14 rounded-xl text-[10px] font-mono" />
+                      <Input name="bep20" defaultValue={userData?.wallet_address_bep20} placeholder="0x..." className="bg-white/5 border-white/10 h-14 rounded-xl text-[10px] font-mono" />
                     </div>
                     <div className="space-y-3">
                       <Label className="text-hierarchy-label ml-2">BEP20 QR (CID)</Label>
-                      <Input name="bep20Qr" defaultValue={userData?.walletQrBep20} placeholder="bafy..." className="bg-white/5 border-white/10 h-14 rounded-xl text-[10px] font-mono" />
+                      <Input name="bep20Qr" defaultValue={userData?.wallet_qr_bep20} placeholder="bafy..." className="bg-white/5 border-white/10 h-14 rounded-xl text-[10px] font-mono" />
                     </div>
                  </div>
                  <div className="space-y-3">
                    <Label className="text-hierarchy-label ml-2">Agent Commission (%)</Label>
                    <div className="relative">
-                    <Input name="commission" type="number" step="0.1" defaultValue={userData?.referralCommission || 0} className="bg-white/5 border-white/10 h-14 rounded-xl text-white px-6 font-bold" />
+                    <Input name="commission" type="number" step="0.1" defaultValue={userData?.referral_commission || 0} className="bg-white/5 border-white/10 h-14 rounded-xl text-white px-6 font-bold" />
                     <Percent className="w-4 h-4 absolute right-6 top-1/2 -translate-y-1/2 text-white/20" />
                    </div>
                  </div>

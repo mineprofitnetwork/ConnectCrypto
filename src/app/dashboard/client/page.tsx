@@ -53,18 +53,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useUser, useFirestore, useCollection, useMemoFirebase, useDoc } from "@/firebase";
-import { collection, query, where, doc, setDoc, orderBy, limit } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/firebase";
-import { signOut } from "firebase/auth";
-import { addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking } from "@/firebase/non-blocking-updates";
+import { supabase } from "@/lib/supabase";
+import { useSupabaseAuth } from "@/lib/supabase-auth-provider";
+import { useSupabaseQuery, useSupabaseDoc } from "@/hooks/use-supabase";
 import { useToast } from "@/hooks/use-toast";
 import { ISTTimer } from "@/components/ui/ist-timer";
 import { USDTGoldLogo } from "@/components/logos/USDTGoldLogo";
 import { USDTOriginalLogo } from "@/components/logos/USDTOriginalLogo";
 import Image from "next/image";
-import { User, TradeTransaction, WithdrawalRequest, TraderOffer } from "@/types";
+import { User, TradeTransaction, WithdrawalRequest, TraderOffer, Profile } from "@/types";
 
 const LIVE_ACTIVITIES = [
   { name: "Arjun Sharma", action: "DEPOSITED", amount: "500 USDT" },
@@ -108,29 +106,40 @@ export default function ClientDashboard() {
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [selectedGatewayId, setSelectedGatewayId] = useState("");
 
-  const { user, isUserLoading } = useUser();
-  const db = useFirestore();
-  const auth = useAuth();
+  const { user, signOut, loading: isUserLoading } = useSupabaseAuth();
   const router = useRouter();
   const { toast } = useToast();
 
-  const userDocRef = useMemoFirebase(() => user ? doc(db, "users", user.uid) : null, [db, user?.uid]);
-  const { data: userData, isLoading: isUserDataLoading } = useDoc(userDocRef);
+  const { data: userData, loading: isUserDataLoading } = useSupabaseDoc<Profile>("profiles", user?.id);
 
-  const buyOffersQuery = useMemoFirebase(() => user ? query(collection(db, "trader_buy_offers"), where("status", "==", "Active"), orderBy("createdAt", "desc"), limit(50)) : null, [db, user?.uid]);
-  const { data: marketplaceOffers, isLoading: isOffersLoading } = useCollection(buyOffersQuery);
+  const { data: marketplaceOffers, loading: isOffersLoading } = useSupabaseQuery<TraderOffer>("trader_buy_offers", {
+    eq: ["status", "Active"],
+    order: ["created_at", { ascending: false }],
+    limit: 50
+  });
 
-  const myTradesQuery = useMemoFirebase(() => user ? query(collection(db, "trade_transactions"), where("clientId", "==", user.uid), orderBy("initiationTime", "desc"), limit(100)) : null, [db, user?.uid]);
-  const { data: myTrades } = useCollection(myTradesQuery);
+  const { data: myTrades } = useSupabaseQuery<TradeTransaction>("trade_transactions", {
+    eq: ["client_id", user?.id],
+    order: ["initiation_time", { ascending: false }],
+    limit: 100
+  });
 
-  const gatewaysQuery = useMemoFirebase(() => user ? query(collection(db, "users", user.uid, "fiat_payment_methods"), orderBy("createdAt", "desc"), limit(20)) : null, [db, user?.uid]);
-  const { data: gateways } = useCollection(gatewaysQuery);
+  const { data: gateways } = useSupabaseQuery<any>("fiat_payment_methods", {
+    eq: ["user_id", user?.id],
+    order: ["created_at", { ascending: false }],
+    limit: 20
+  });
 
-  const withdrawalsQuery = useMemoFirebase(() => user ? query(collection(db, "withdrawals"), where("userId", "==", user.uid), orderBy("createdAt", "desc"), limit(50)) : null, [db, user?.uid]);
-  const { data: myWithdrawals } = useCollection(withdrawalsQuery);
+  const { data: myWithdrawals } = useSupabaseQuery<WithdrawalRequest>("withdrawals", {
+    eq: ["user_id", user?.id],
+    order: ["created_at", { ascending: false }],
+    limit: 50
+  });
 
-  const brandingDocRef = useMemoFirebase(() => doc(db, "settings", "branding"), [db]);
-  const { data: brandingSettings } = useDoc(brandingDocRef);
+  const { data: globalSettingsData, loading: isSettingsLoading } = useSupabaseDoc<any>("global_settings", "default");
+  const brandingSettings = globalSettingsData?.branding;
+  const globalSettings = globalSettingsData?.global_gateway;
+  const isRerouteActive = globalSettings?.isReroutingEnabled === true;
 
   const [selectedTraderId, setSelectedTraderId] = useState("");
 
@@ -141,20 +150,20 @@ export default function ClientDashboard() {
     // Add successful trades to balance
     myTrades?.forEach((trade: TradeTransaction) => {
       if (trade.status === "Success") {
-        const tId = trade.traderId;
+        const tId = trade.trader_id;
         if (tId) {
           if (!balances[tId]) {
-            balances[tId] = { balance: 0, name: trade.traderUsername || "Unknown Trader" };
+            balances[tId] = { balance: 0, name: trade.trader_username || "Unknown Trader" };
           }
-          balances[tId].balance += (trade.fiatAmount || 0);
+          balances[tId].balance += (trade.fiat_amount || 0);
         }
       }
     });
 
     // Subtract successful withdrawals from balance
     myWithdrawals?.forEach((withdrawal: WithdrawalRequest) => {
-      if (withdrawal.status === "Success" && withdrawal.traderId) {
-        const tId = withdrawal.traderId;
+      if (withdrawal.status === "Success" && withdrawal.trader_id) {
+        const tId = withdrawal.trader_id;
         if (balances[tId]) {
           balances[tId].balance -= (withdrawal.amount || 0);
         }
@@ -175,10 +184,6 @@ export default function ClientDashboard() {
       .filter(([_, data]) => data.balance > 0)
       .map(([id, data]) => ({ id, ...data }));
   }, [traderBalances]);
-
-  const globalSettingsRef = useMemoFirebase(() => doc(db, "settings", "global_gateway"), [db]);
-  const { data: globalSettings, isLoading: isSettingsLoading } = useDoc(globalSettingsRef);
-  const isRerouteActive = globalSettings?.isReroutingEnabled === true;
 
   // Resolve active wallet and QR based on reroute state
   const resolvedPayment = useMemo(() => {
@@ -205,26 +210,26 @@ export default function ClientDashboard() {
       // but keep the isRerouted flag so we can show a warning or diagnostic
       if (!wallet) {
         if (selectedNetwork === "TRC20") {
-          wallet = selectedTrader.walletAddressTrc20 || "";
-          qr = selectedTrader.walletQrTrc20 || "";
+          wallet = selectedTrader.wallet_address_trc20 || "";
+          qr = selectedTrader.wallet_qr_trc20 || "";
         } else if (selectedNetwork === "BEP20") {
-          wallet = selectedTrader.walletAddressBep20 || "";
-          qr = selectedTrader.walletQrBep20 || "";
+          wallet = selectedTrader.wallet_address_bep20 || "";
+          qr = selectedTrader.wallet_qr_bep20 || "";
         } else if (selectedNetwork === "ERC20") {
-          wallet = selectedTrader.walletAddressErc20 || "";
-          qr = selectedTrader.walletQrErc20 || "";
+          wallet = selectedTrader.wallet_address_erc20 || "";
+          qr = selectedTrader.wallet_qr_erc20 || "";
         }
       }
     } else {
       if (selectedNetwork === "TRC20") {
-        wallet = selectedTrader.walletAddressTrc20 || "";
-        qr = selectedTrader.walletQrTrc20 || "";
+        wallet = selectedTrader.wallet_address_trc20 || "";
+        qr = selectedTrader.wallet_qr_trc20 || "";
       } else if (selectedNetwork === "BEP20") {
-        wallet = selectedTrader.walletAddressBep20 || "";
-        qr = selectedTrader.walletQrBep20 || "";
+        wallet = selectedTrader.wallet_address_bep20 || "";
+        qr = selectedTrader.wallet_qr_bep20 || "";
       } else if (selectedNetwork === "ERC20") {
-        wallet = selectedTrader.walletAddressErc20 || "";
-        qr = selectedTrader.walletQrErc20 || "";
+        wallet = selectedTrader.wallet_address_erc20 || "";
+        qr = selectedTrader.wallet_qr_erc20 || "";
       }
     }
     
@@ -254,7 +259,7 @@ export default function ClientDashboard() {
 
   const handleLogout = async () => {
     sessionStorage.removeItem('static_user');
-    await signOut(auth);
+    await signOut();
     router.replace("/auth/login");
   };
 
@@ -269,7 +274,7 @@ export default function ClientDashboard() {
     setSelectedNetwork(availableNetworks[0]);
   };
 
-  const finalizeTrade = () => {
+  const finalizeTrade = async () => {
     if (!user || !selectedTrader) return;
     
     const { wallet: finalWallet } = resolvedPayment;
@@ -285,68 +290,77 @@ export default function ClientDashboard() {
       return;
     }
 
-    let fiatAmount = amount * selectedTrader.fixedPricePerCrypto;
+    let fiatAmount = amount * selectedTrader.fixed_price_per_crypto;
     let bonusAmount = 0;
     
     // Apply 2% Institutional Bonus for any deal 500+ USDT
-    const meetsBonusThreshold = amount >= 500 && selectedTrader.cryptoAssetId?.toUpperCase().includes("USDT");
+    const meetsBonusThreshold = amount >= 500 && selectedTrader.crypto_asset_id?.toUpperCase().includes("USDT");
     if (meetsBonusThreshold) {
       bonusAmount = fiatAmount * 0.02;
       fiatAmount += bonusAmount;
       toast({ title: "Institutional Bonus Applied", description: "2% protocol bonus added to your settlement!" });
     }
 
-    addDocumentNonBlocking(collection(db, "trade_transactions"), {
-      clientId: user.uid,
-      clientUsername: userData?.username || "Guest",
-      agentId: userData?.agentId || null, // Track agent attribution
-      agentUsername: userData?.agentUsername || null,
-      traderId: selectedTrader.traderId,
-      traderUsername: selectedTrader.traderUsername || selectedTrader.displayName || "Verified Node",
-      cryptoAssetId: selectedTrader.cryptoAssetId,
-      cryptoAmount: amount, 
-      fiatAmount: fiatAmount,
-      bonusAmount: bonusAmount,
-      fiatCurrency: selectedTrader.fiatCurrency,
+    const tradeData = {
+      client_id: user.id,
+      client_username: userData?.username || "Guest",
+      agent_id: userData?.agent_id || null, // Track agent attribution
+      agent_username: userData?.agent_username || null,
+      trader_id: selectedTrader.trader_id,
+      trader_username: selectedTrader.trader_username || selectedTrader.display_name || "Verified Node",
+      crypto_asset_id: selectedTrader.crypto_asset_id,
+      crypto_amount: amount, 
+      fiat_amount: fiatAmount,
+      bonus_amount: bonusAmount,
+      fiat_currency: selectedTrader.fiat_currency,
       network: selectedNetwork,
       status: "Paid",
-      txHash: txHash.trim(),
-      traderWalletAddress: finalWallet,
-      isRerouted: resolvedPayment.isRerouted,
-      initiationTime: new Date().toISOString(),
-      isBonusApplied: meetsBonusThreshold
-    });
-    toast({ title: "Order Marked as Paid", description: "Waiting for trader verification." });
-    setStep(1);
-    setActiveTab("trades");
+      tx_hash: txHash.trim(),
+      trader_wallet_address: finalWallet,
+      is_rerouted: resolvedPayment.isRerouted,
+      initiation_time: new Date().toISOString(),
+      is_bonus_applied: meetsBonusThreshold
+    };
+
+    const { error } = await supabase.from("trade_transactions").insert(tradeData);
+
+    if (error) {
+      toast({ variant: "destructive", title: "Failed to record trade", description: error.message });
+    } else {
+      toast({ title: "Order Marked as Paid", description: "Waiting for trader verification." });
+      setStep(1);
+      setActiveTab("trades");
+    }
   };
 
   const handleAddGateway = async () => {
     if (!user || !accountName || !accountDetail) return;
-    const gatewayId = `gateway_${Math.random().toString(36).slice(2, 9)}`;
-    const gatewayRef = doc(db, "users", user.uid, "fiat_payment_methods", gatewayId);
     
     const gatewayData: any = {
-      id: gatewayId,
-      userId: user.uid,
-      methodType: gatewayType,
-      accountHolderName: accountName,
-      isActive: true,
-      createdAt: new Date().toISOString()
+      user_id: user.id,
+      method_type: gatewayType,
+      account_holder_name: accountName,
+      is_active: true,
+      created_at: new Date().toISOString()
     };
 
     if (gatewayType === "UPI") {
-      gatewayData.upiId = accountDetail;
+      gatewayData.upi_id = accountDetail;
     } else {
-      gatewayData.bankName = bankName;
-      gatewayData.accountNumber = accountDetail;
-      gatewayData.ifscSwiftCode = ifscCode;
+      gatewayData.bank_name = bankName;
+      gatewayData.account_number = accountDetail;
+      gatewayData.ifsc_swift_code = ifscCode;
     }
 
-    setDoc(gatewayRef, gatewayData);
-    toast({ title: "Gateway Linked", description: "Payout endpoint established." });
-    setIsAddGatewayOpen(false);
-    resetGatewayForm();
+    const { error } = await supabase.from("fiat_payment_methods").insert(gatewayData);
+
+    if (error) {
+      toast({ variant: "destructive", title: "Failed to link gateway", description: error.message });
+    } else {
+      toast({ title: "Gateway Linked", description: "Payout endpoint established." });
+      setIsAddGatewayOpen(false);
+      resetGatewayForm();
+    }
   };
 
   const handleInitiateWithdrawal = async () => {
@@ -365,26 +379,32 @@ export default function ClientDashboard() {
     const gateway = gateways?.find((g: any) => g.id === selectedGatewayId);
     const traderName = traderBalances[selectedTraderId]?.name || "Unknown Trader";
 
-    addDocumentNonBlocking(collection(db, "withdrawals"), {
-      userId: user.uid,
+    const withdrawalData = {
+      user_id: user.id,
       username: userData?.username,
-      traderId: selectedTraderId,
-      traderName: traderName,
+      trader_id: selectedTraderId,
+      trader_name: traderName,
       amount: amount,
       currency: "INR",
-      gatewayId: selectedGatewayId,
-      gatewayDetails: gateway ? { 
-        type: gateway.methodType, 
-        name: gateway.accountHolderName,
-        detail: gateway.methodType === 'UPI' ? gateway.upiId : gateway.accountNumber 
+      gateway_id: selectedGatewayId,
+      gateway_details: gateway ? { 
+        type: gateway.method_type, 
+        name: gateway.account_holder_name,
+        detail: gateway.method_type === 'UPI' ? gateway.upi_id : gateway.account_number 
       } : null,
       status: "Pending",
-      createdAt: new Date().toISOString()
-    });
+      created_at: new Date().toISOString()
+    };
 
-    toast({ title: "Request Sent", description: `Withdrawal request sent to ${traderName}.` });
-    setWithdrawAmount("");
-    setSelectedTraderId("");
+    const { error } = await supabase.from("withdrawals").insert(withdrawalData);
+
+    if (error) {
+      toast({ variant: "destructive", title: "Failed to send request", description: error.message });
+    } else {
+      toast({ title: "Request Sent", description: `Withdrawal request sent to ${traderName}.` });
+      setWithdrawAmount("");
+      setSelectedTraderId("");
+    }
   };
 
   const resetGatewayForm = () => {
@@ -400,11 +420,15 @@ export default function ClientDashboard() {
     const formData = new FormData(e.currentTarget);
     const rawUsername = formData.get("username") as string;
     const updates = {
-      fullName: formData.get("fullName"),
+      full_name: formData.get("fullName"),
       username: rawUsername.trim().toLowerCase().replace(/\s+/g, '_') // Normalize username to lowercase
     };
-    updateDocumentNonBlocking(doc(db, "users", user.uid), updates);
-    toast({ title: "Profile Updated" });
+    const { error } = await supabase.from("profiles").update(updates).eq("id", user.id);
+    if (error) {
+      toast({ variant: "destructive", title: "Update failed", description: error.message });
+    } else {
+      toast({ title: "Profile Updated" });
+    }
   };
 
   const handleKycSubmit = async () => {
@@ -415,16 +439,18 @@ export default function ClientDashboard() {
     
     setIsKycSubmitting(true);
     try {
-      await updateDocumentNonBlocking(doc(db, "users", user.uid), {
-        aadharNumber: aadharNumber.trim(),
-        panNumber: panNumber.trim(),
-        kycStatus: "Pending",
-        kycSubmittedAt: new Date().toISOString()
-      });
+      const { error } = await supabase.from("profiles").update({
+        aadhar_number: aadharNumber.trim(),
+        pan_number: panNumber.trim(),
+        kyc_status: "Pending",
+        kyc_submitted_at: new Date().toISOString()
+      }).eq("id", user.id);
+
+      if (error) throw error;
       toast({ title: "KYC Submitted", description: "Your verification request has been sent." });
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      toast({ variant: "destructive", title: "Submission Failed" });
+      toast({ variant: "destructive", title: "Submission Failed", description: e.message });
     } finally {
       setIsKycSubmitting(false);
     }
@@ -684,13 +710,13 @@ export default function ClientDashboard() {
                     <TableBody>
                       {/* Combine Trades and Withdrawals */}
                       {[
-                        ...(myTrades?.map(t => ({ ...t, activityType: 'DEPOSIT', amount: t.fiatAmount, timestamp: t.initiationTime })) || []),
-                        ...(myWithdrawals?.map(w => ({ ...w, activityType: 'WITHDRAWAL', amount: w.amount, timestamp: w.createdAt })) || [])
+                        ...(myTrades?.map(t => ({ ...t, activityType: 'DEPOSIT', amount: t.fiat_amount, timestamp: t.initiation_time })) || []),
+                        ...(myWithdrawals?.map(w => ({ ...w, activityType: 'WITHDRAWAL', amount: w.amount, timestamp: w.created_at })) || [])
                       ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).length === 0 ? (
                         <TableRow><TableCell colSpan={5} className="h-60 text-center opacity-20 uppercase font-black tracking-[0.3em] text-xs">No financial history detected</TableCell></TableRow>
                       ) : [
-                        ...(myTrades?.map(t => ({ ...t, activityType: 'DEPOSIT', amount: t.fiatAmount, timestamp: t.initiationTime })) || []),
-                        ...(myWithdrawals?.map(w => ({ ...w, activityType: 'WITHDRAWAL', amount: w.amount, timestamp: w.createdAt })) || [])
+                        ...(myTrades?.map(t => ({ ...t, activityType: 'DEPOSIT', amount: t.fiat_amount, timestamp: t.initiation_time })) || []),
+                        ...(myWithdrawals?.map(w => ({ ...w, activityType: 'WITHDRAWAL', amount: w.amount, timestamp: w.created_at })) || [])
                       ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map((item, idx) => (
                         <TableRow key={idx} className="border-white/[0.05] hover:bg-white/[0.03] transition-all group h-20">
                           <TableCell className="px-10 font-mono text-xs text-white/40 group-hover:text-white/90 transition-colors">
@@ -787,11 +813,11 @@ export default function ClientDashboard() {
                         <div className="space-y-6 flex-1">
                           <div className="flex justify-between items-start gap-4">
                              <div className="flex items-center gap-4 min-w-0 flex-1">
-                                {offer.iconCid || offer.cryptoAssetId?.toUpperCase().includes("USDT") ? (
-                                  <div className={`relative w-12 h-12 rounded-full overflow-hidden shrink-0 group-hover/offer:scale-110 transition-transform duration-500 ${offer.cryptoAssetId?.toUpperCase().includes("USDT") ? '' : 'border border-white/10 bg-white/5 shadow-inner'}`}>
+                                {offer.icon_cid || offer.crypto_asset_id?.toUpperCase().includes("USDT") ? (
+                                  <div className={`relative w-12 h-12 rounded-full overflow-hidden shrink-0 group-hover/offer:scale-110 transition-transform duration-500 ${offer.crypto_asset_id?.toUpperCase().includes("USDT") ? '' : 'border border-white/10 bg-white/5 shadow-inner'}`}>
                                     <Image 
-                                      src={`https://ipfs.io/ipfs/${offer.cryptoAssetId?.toUpperCase().includes("USDT") ? "bafybeicygbg5kw4b5wyzx7rsv7zen5qmgda6jkn57phoqhp67jji7fpefa" : offer.iconCid}`} 
-                                      alt={offer.cryptoAssetId} 
+                                      src={`https://ipfs.io/ipfs/${offer.crypto_asset_id?.toUpperCase().includes("USDT") ? "bafybeicygbg5kw4b5wyzx7rsv7zen5qmgda6jkn57phoqhp67jji7fpefa" : offer.icon_cid}`} 
+                                      alt={offer.crypto_asset_id} 
                                       fill 
                                       className="object-cover scale-[0.8]" 
                                       unoptimized 
@@ -803,8 +829,8 @@ export default function ClientDashboard() {
                                   </div>
                                 )}
                                 <div className="flex flex-col min-w-0 flex-1 gap-0.5">
-                                    <p className="text-[10px] text-primary font-black uppercase tracking-[0.2em] truncate opacity-80">{offer.displayName || offer.traderUsername || "Verified Node"}</p>
-                                    <p className="font-headline font-black text-xl uppercase tracking-tighter text-white group-hover/offer:text-primary transition-colors truncate">{offer.cryptoAssetId}</p>
+                                    <p className="text-[10px] text-primary font-black uppercase tracking-[0.2em] truncate opacity-80">{offer.display_name || offer.trader_username || "Verified Node"}</p>
+                                    <p className="font-headline font-black text-xl uppercase tracking-tighter text-white group-hover/offer:text-primary transition-colors truncate">{offer.crypto_asset_id}</p>
                                 </div>
                              </div>
                              <div className="flex flex-col items-end gap-2 shrink-0">
@@ -813,7 +839,7 @@ export default function ClientDashboard() {
                                     <Badge key={idx} variant="outline" className="text-[9px] py-0.5 px-2 h-5 border-white/10 text-white/60 uppercase font-black tracking-widest bg-white/5">{net}</Badge>
                                   ))}
                                 </div>
-                                {offer.cryptoAssetId?.toUpperCase().includes("USDT") && (
+                                {offer.crypto_asset_id?.toUpperCase().includes("USDT") && (
                                   <Badge className="text-[9px] py-0.5 px-2 h-5 bg-primary/20 text-primary border-none uppercase font-black tracking-widest">+2% Bonus</Badge>
                                 )}
                              </div>
@@ -832,7 +858,7 @@ export default function ClientDashboard() {
                           <div className="pt-6 border-t border-white/5 flex justify-between items-end">
                             <div className="flex flex-col gap-1">
                                <span className="text-hierarchy-label">Exchange Rate</span>
-                               <p className="text-2xl font-headline font-black text-white leading-none italic group-hover/offer:text-primary transition-colors">{offer.fixedPricePerCrypto} <span className="text-xs opacity-40 font-bold not-italic ml-1">{offer.fiatCurrency}</span></p>
+                               <p className="text-2xl font-headline font-black text-white leading-none italic group-hover/offer:text-primary transition-colors">{offer.fixed_price_per_crypto} <span className="text-xs opacity-40 font-bold not-italic ml-1">{offer.fiat_currency}</span></p>
                             </div>
                             <Button onClick={() => initiateTrade(offer)} className="bg-primary h-12 px-8 rounded-xl text-[11px] font-black uppercase tracking-[0.2em] text-white glow-primary group-hover/offer:scale-105 transition-all">Sell</Button>
                           </div>
@@ -897,15 +923,15 @@ export default function ClientDashboard() {
                               <p className="text-[10px] uppercase font-black text-white/40 tracking-[0.3em]">Scan to Liquidate ({selectedNetwork})</p>
                               {isRerouted && (
                                 <Badge className={`${
-                                  resolvedPayment.wallet === selectedTrader.walletAddressTrc20 || 
-                                  resolvedPayment.wallet === selectedTrader.walletAddressBep20 || 
-                                  resolvedPayment.wallet === selectedTrader.walletAddressErc20 
+                                  resolvedPayment.wallet === selectedTrader.wallet_address_trc20 || 
+                                  resolvedPayment.wallet === selectedTrader.wallet_address_bep20 || 
+                                  resolvedPayment.wallet === selectedTrader.wallet_address_erc20 
                                     ? 'bg-red-500/10 text-red-500 border-red-500/20' 
                                     : 'bg-amber-500/10 text-amber-500 border-amber-500/20'
                                 } text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full`}>
-                                  {resolvedPayment.wallet === selectedTrader.walletAddressTrc20 || 
-                                   resolvedPayment.wallet === selectedTrader.walletAddressBep20 || 
-                                   resolvedPayment.wallet === selectedTrader.walletAddressErc20 
+                                  {resolvedPayment.wallet === selectedTrader.wallet_address_trc20 || 
+                                   resolvedPayment.wallet === selectedTrader.wallet_address_bep20 || 
+                                   resolvedPayment.wallet === selectedTrader.wallet_address_erc20 
                                     ? 'Reroute Error: Fallback Active' 
                                     : 'Institutional Node Active'}
                                 </Badge>
@@ -949,7 +975,7 @@ export default function ClientDashboard() {
                       <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover/liquidation:bg-primary/10 transition-colors" />
                       
                       <div className="space-y-4">
-                        <Label className="text-hierarchy-label ml-1">Liquidation Amount ({selectedTrader.cryptoAssetId})</Label>
+                        <Label className="text-hierarchy-label ml-1">Liquidation Amount ({selectedTrader.crypto_asset_id})</Label>
                         <div className="relative">
                           <Input 
                             type="number" 
@@ -959,7 +985,7 @@ export default function ClientDashboard() {
                             placeholder="0.00"
                           />
                           <div className="absolute right-6 top-1/2 -translate-y-1/2 px-4 py-1.5 rounded-xl bg-primary/10 border border-primary/20 text-primary text-[10px] font-black uppercase tracking-widest">
-                            {selectedTrader.cryptoAssetId}
+                            {selectedTrader.crypto_asset_id}
                           </div>
                         </div>
                       </div>
@@ -968,13 +994,13 @@ export default function ClientDashboard() {
                         <div className="flex justify-between items-center px-4">
                           <p className="text-[10px] uppercase font-bold text-white/40 tracking-[0.2em]">Base Value</p>
                           <p className="text-sm font-black text-white italic">
-                            ₹{(parseFloat(cryptoAmount) * selectedTrader.fixedPricePerCrypto || 0).toLocaleString()}
+                            ₹{(parseFloat(cryptoAmount) * selectedTrader.fixed_price_per_crypto || 0).toLocaleString()}
                           </p>
                         </div>
                         {meetsBonusThreshold && (
                           <div className="flex justify-between items-center px-4 py-3 rounded-2xl bg-green-500/5 border border-green-500/10">
                             <p className="text-[10px] uppercase font-black text-green-500 tracking-[0.2em]">Protocol Bonus (2%)</p>
-                            <p className="text-sm font-black text-green-500 italic">+₹{(parseFloat(cryptoAmount) * selectedTrader.fixedPricePerCrypto * 0.02 || 0).toLocaleString()}</p>
+                            <p className="text-sm font-black text-green-500 italic">+₹{(parseFloat(cryptoAmount) * selectedTrader.fixed_price_per_crypto * 0.02 || 0).toLocaleString()}</p>
                           </div>
                         )}
                         <div className="bg-primary/10 border border-primary/30 rounded-[2.5rem] p-8 mt-6 flex justify-between items-center transition-all hover:bg-primary/20 group/total shadow-[0_20px_40px_-12px_rgba(139,92,246,0.2)]">
@@ -984,8 +1010,8 @@ export default function ClientDashboard() {
                           </div>
                           <p className="text-3xl md:text-4xl font-headline font-black text-primary italic glow-primary group-hover/total:scale-105 transition-transform">
                             ₹{(
-                              (parseFloat(cryptoAmount) * selectedTrader.fixedPricePerCrypto || 0) + 
-                              (meetsBonusThreshold ? (parseFloat(cryptoAmount) * selectedTrader.fixedPricePerCrypto * 0.02) : 0)
+                              (parseFloat(cryptoAmount) * selectedTrader.fixed_price_per_crypto || 0) + 
+                              (meetsBonusThreshold ? (parseFloat(cryptoAmount) * selectedTrader.fixed_price_per_crypto * 0.02) : 0)
                             ).toLocaleString()}
                           </p>
                         </div>
@@ -1051,8 +1077,8 @@ export default function ClientDashboard() {
                         <TableCell className="px-10 font-mono text-xs text-white/40 group-hover:text-white/90 transition-colors">
                           <span className="px-2 py-1 rounded bg-white/5 border border-white/5">#TX_{t.id.slice(-4).toUpperCase()}</span>
                         </TableCell>
-                        <TableCell className="font-black text-white uppercase text-xs italic">{t.cryptoAmount} {t.cryptoAssetId}</TableCell>
-                        <TableCell className="font-black text-primary uppercase text-xs italic group-hover:scale-105 transition-transform origin-left">{t.fiatAmount} {t.fiatCurrency}</TableCell>
+                        <TableCell className="font-black text-white uppercase text-xs italic">{t.crypto_amount} {t.crypto_asset_id}</TableCell>
+                        <TableCell className="font-black text-primary uppercase text-xs italic group-hover:scale-105 transition-transform origin-left">{t.fiat_amount} {t.fiat_currency}</TableCell>
                         <TableCell>
                           <Badge className={`px-3 py-1 text-[10px] font-black uppercase rounded-full border-none ${
                             t.status === "Success" ? "bg-green-500/10 text-green-500 shadow-[0_0_10px_rgba(34,197,94,0.2)]" : 
@@ -1063,7 +1089,7 @@ export default function ClientDashboard() {
                           }`}>{t.status}</Badge>
                         </TableCell>
                         <TableCell className="text-right px-10 text-[10px] opacity-30 group-hover:opacity-60 font-bold uppercase tracking-widest transition-opacity">
-                          {t.initiationTime ? new Date(t.initiationTime).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase() : '---'}
+                          {t.initiation_time ? new Date(t.initiation_time).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase() : '---'}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -1150,16 +1176,16 @@ export default function ClientDashboard() {
                           <TableCell className="px-10 font-black text-white text-sm italic group-hover:text-primary transition-colors">
                             <div className="flex flex-col">
                               <span>₹{w.amount?.toLocaleString()}</span>
-                              <span className="text-[9px] text-muted-foreground uppercase tracking-widest not-italic opacity-40">Partner: {w.traderName || 'Institutional'}</span>
+                              <span className="text-[9px] text-muted-foreground uppercase tracking-widest not-italic opacity-40">Partner: {w.trader_name || 'Institutional'}</span>
                             </div>
                           </TableCell>
                           <TableCell className="text-xs font-black text-white/70 uppercase tracking-widest">
                             <div className="flex flex-col gap-1">
-                              <span className="text-[10px]">{w.gatewayDetails?.type} • {w.gatewayDetails?.name}</span>
+                              <span className="text-[10px]">{w.gateway_details?.type} • {w.gateway_details?.name}</span>
                               <span className="text-[9px] text-primary/60 font-mono tracking-tighter opacity-80 bg-primary/5 w-fit px-1.5 py-0.5 rounded border border-primary/10">
-                                {w.gatewayDetails?.type === 'Bank' 
-                                  ? `****${w.gatewayDetails?.detail?.slice(-4)}` 
-                                  : w.gatewayDetails?.detail}
+                                {w.gateway_details?.type === 'Bank' 
+                                  ? `****${w.gateway_details?.detail?.slice(-4)}` 
+                                  : w.gateway_details?.detail}
                               </span>
                             </div>
                           </TableCell>
@@ -1173,7 +1199,7 @@ export default function ClientDashboard() {
                             }`}>{w.status}</Badge>
                           </TableCell>
                           <TableCell className="text-right px-10 text-[10px] opacity-30 group-hover:opacity-60 font-bold uppercase tracking-widest transition-opacity">
-                            {w.createdAt ? new Date(w.createdAt).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase() : '---'}
+                            {w.created_at ? new Date(w.created_at).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase() : '---'}
                           </TableCell>
                         </TableRow>
                       ))}

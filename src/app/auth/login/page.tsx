@@ -8,18 +8,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Heart } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, useUser, useFirestore } from "@/firebase";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { useSupabaseAuth } from "@/lib/supabase-auth-provider";
+import { supabase } from "@/lib/supabase";
 import { ISTTimer } from "@/components/ui/ist-timer";
 import Link from "next/link";
 
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const auth = useAuth();
-  const db = useFirestore();
-  const { user, isUserLoading } = useUser();
+  const { user, loading: isUserLoading, signOut } = useSupabaseAuth();
   const [loading, setLoading] = useState(false);
   const [errorHint, setErrorHint] = useState(false);
 
@@ -41,9 +38,13 @@ export default function LoginPage() {
       // Role-based redirection logic
       const checkRoleAndRedirect = async () => {
         try {
-          const userDoc = await getDoc(doc(db, "users", user.uid));
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
+          const { data: userData, error: profileError } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", user.id)
+            .single();
+
+          if (userData && !profileError) {
             if (userData.role === "admin") {
               router.push("/dashboard/admin");
             } else if (userData.role === "trader") {
@@ -65,17 +66,19 @@ export default function LoginPage() {
       
       checkRoleAndRedirect();
     }
-  }, [user, isUserLoading, router, db]);
+  }, [user, isUserLoading, router]);
 
   const findUserByAlias = async (alias: string) => {
     try {
       const cleanAlias = alias.trim().toLowerCase().replace(/\s+/g, '_');
-      const usersRef = collection(db, "users");
-      // Use the normalized username field which is already stored as lowercase
-      const q = query(usersRef, where("username", "==", cleanAlias));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        return snap.docs[0];
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("username", cleanAlias)
+        .single();
+      
+      if (data && !error) {
+        return data;
       }
     } catch (e) {
       console.error("[Identity Protocol] Alias lookup error:", e);
@@ -86,11 +89,14 @@ export default function LoginPage() {
   const findUserByEmail = async (email: string) => {
     try {
       const cleanEmail = email.trim().toLowerCase();
-      const usersRef = collection(db, "users");
-      const q = query(usersRef, where("email", "==", cleanEmail));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        return snap.docs[0];
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("email", cleanEmail)
+        .single();
+      
+      if (data && !error) {
+        return data;
       }
     } catch (e) {
       console.error("[Identity Protocol] Email lookup error:", e);
@@ -123,21 +129,23 @@ export default function LoginPage() {
     }
 
     if (userProfile) {
-      const data = userProfile.data();
-      targetEmail = data.email;
-      storedPassword = data.password;
-      storedRole = data.role;
-      storedUsername = data.username;
+      targetEmail = userProfile.email;
+      storedPassword = userProfile.password; // Note: We should use password_hash in production
+      storedRole = userProfile.role;
+      storedUsername = userProfile.username;
     }
 
     try {
       // 1. Attempt Static Override first (for the 'easy' flow)
       if (storedPassword && storedPassword === password) {
-        // Authenticate via Firebase if possible, but prioritize the match
+        // Authenticate via Supabase if possible, but prioritize the match
         try {
-          await signInWithEmailAndPassword(auth, targetEmail, password);
+          await supabase.auth.signInWithPassword({
+            email: targetEmail,
+            password: password,
+          });
         } catch (e) {
-          console.warn("[Identity Protocol] Firebase auth failed, using static fallback:", e);
+          console.warn("[Identity Protocol] Supabase auth failed, using static fallback:", e);
           // Establish a Static Session for the provider to pick up
           const staticUser = {
             uid: userProfile?.id || targetEmail.replace(/[^a-zA-Z0-9]/g, '_'), // Use real UID if available
@@ -164,13 +172,23 @@ export default function LoginPage() {
         return;
       }
 
-      // 2. Fallback to standard Firebase Auth Login
-      const userCredential = await signInWithEmailAndPassword(auth, targetEmail, password);
-      const uid = userCredential.user.uid;
+      // 2. Fallback to standard Supabase Auth Login
+      const { data: { user: authUser }, error: loginError } = await supabase.auth.signInWithPassword({
+        email: targetEmail,
+        password: password,
+      });
+
+      if (loginError) throw loginError;
+      if (!authUser) throw new Error("No user found");
       
       // Force fetch fresh doc
-      const userDoc = await getDoc(doc(db, "users", uid));
-      const userData = userDoc.data();
+      const { data: userData, error: profileError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", authUser.id)
+        .single();
+
+      if (profileError) throw profileError;
 
       if (userData?.role === "admin" || targetEmail === "iamadmin@connectcrypto.com" || identifierInput === "iamadmin") {
         window.location.href = "/dashboard/admin";
