@@ -1,10 +1,8 @@
-'use server';
 /**
  * @fileOverview An AI assistant for agents to generate recruitment and communication messages.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import {z} from 'zod';
 
 const AgentAICommunicationAssistantInputSchema = z.object({
   messageType: z
@@ -29,108 +27,22 @@ const AgentAICommunicationAssistantOutputSchema = z.object({
 });
 export type AgentAICommunicationAssistantOutput = z.infer<typeof AgentAICommunicationAssistantOutputSchema>;
 
-const recruitmentPrompt = ai.definePrompt({
-  name: 'agentRecruitmentPrompt',
-  input: {schema: AgentAICommunicationAssistantInputSchema},
-  output: {schema: AgentAICommunicationAssistantOutputSchema},
-  prompt: `You are an AI assistant for a P2P crypto trading agent. Your goal is to generate a professional recruitment message to attract new users to the platform through the agent's referral link.
-
-Agent: {{{agentDetails.agentUsername}}}
-Referral Link: {{{agentDetails.referralLink}}}
-{{#if agentDetails.traderUsername}}
-Associated Node: {{{agentDetails.traderUsername}}}
-{{/if}}
-{{#if agentDetails.commissionRate}}
-Commission Rate: {{{agentDetails.commissionRate}}}%
-{{/if}}
-Additional Context: {{{additionalContext}}}
-
-Generate a persuasive and professional message that highlights the benefits of joining the ConnectCrypto platform through {{{agentDetails.agentUsername}}}'s link. Mention secure P2P trading, institutional liquidity, and any other relevant benefits.
-
-Provide the response in the following JSON format:
-
-json
-{
-  "generatedMessage": "string",
-  "messagePurpose": "recruitment"
-}
-`
-});
-
-const onboardingPrompt = ai.definePrompt({
-  name: 'agentOnboardingPrompt',
-  input: {schema: AgentAICommunicationAssistantInputSchema},
-  output: {schema: AgentAICommunicationAssistantOutputSchema},
-  prompt: `You are an AI assistant for a P2P crypto trading agent. Your goal is to generate a welcoming onboarding message for a new referral.
-
-Agent: {{{agentDetails.agentUsername}}}
-Referral: {{{clientDetails.clientUsername}}}
-Referral Link: {{{agentDetails.referralLink}}}
-Additional Context: {{{additionalContext}}}
-
-Generate a warm and helpful welcome message for {{{clientDetails.clientUsername}}}. Explain the next steps for them to start trading, such as completing KYC or browsing the marketplace.
-
-Provide the response in the following JSON format:
-
-json
-{
-  "generatedMessage": "string",
-  "messagePurpose": "onboarding"
-}
-`
-});
-
-const supportPrompt = ai.definePrompt({
-  name: 'agentSupportPrompt',
-  input: {schema: AgentAICommunicationAssistantInputSchema},
-  output: {schema: AgentAICommunicationAssistantOutputSchema},
-  prompt: `You are an AI assistant for a P2P crypto trading agent. Your goal is to generate a supportive message for an existing referral.
-
-Agent: {{{agentDetails.agentUsername}}}
-Referral: {{{clientDetails.clientUsername}}}
-Additional Context: {{{additionalContext}}}
-
-Generate a helpful and professional support message for {{{clientDetails.clientUsername}}}. Address any concerns or questions they might have based on the additional context provided.
-
-Provide the response in the following JSON format:
-
-json
-{
-  "generatedMessage": "string",
-  "messagePurpose": "support"
-}
-`
-});
-
 export async function agentAICommunicationAssistant(
   input: AgentAICommunicationAssistantInput
 ): Promise<AgentAICommunicationAssistantOutput> {
-  return agentAICommunicationAssistantFlow(input);
+  // Mock implementation for static export compatibility
+  let message = "";
+  if (input.messageType === 'recruitment') {
+    message = `Join ConnectCrypto through my link: ${input.agentDetails.referralLink}. Secure P2P trading with high liquidity!`;
+  } else if (input.messageType === 'onboarding') {
+    message = `Welcome ${input.clientDetails?.clientUsername || 'there'}! Get started with ConnectCrypto using my link: ${input.agentDetails.referralLink}`;
+  } else {
+    message = `Hello! How can I help you with your ConnectCrypto experience?`;
+  }
+
+  return {
+    generatedMessage: message,
+    messagePurpose: input.messageType
+  };
 }
 
-const agentAICommunicationAssistantFlow = ai.defineFlow(
-  {
-    name: 'agentAICommunicationAssistantFlow',
-    inputSchema: AgentAICommunicationAssistantInputSchema,
-    outputSchema: AgentAICommunicationAssistantOutputSchema,
-  },
-  async (input) => {
-    let response;
-
-    if (input.messageType === 'recruitment') {
-      response = await recruitmentPrompt(input);
-    } else if (input.messageType === 'onboarding') {
-      response = await onboardingPrompt(input);
-    } else if (input.messageType === 'support') {
-      response = await supportPrompt(input);
-    } else {
-      throw new Error('Invalid messageType provided.');
-    }
-
-    if (!response.output) {
-      throw new Error('AI did not return a message.');
-    }
-
-    return response.output;
-  }
-);

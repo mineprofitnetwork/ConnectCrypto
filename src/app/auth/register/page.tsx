@@ -164,21 +164,13 @@ function RegisterContent() {
   );
 }
 
-export default function RegisterPage() {
+function RegisterPage() {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-transparent font-body overflow-y-auto no-scrollbar relative selection:bg-primary/30">
-      {/* Decorative Elements */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-64 bg-primary/5 blur-[120px] -z-10" />
-      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-64 bg-primary/5 blur-[120px] -z-10" />
-
-      <div className="absolute top-10 right-10">
-        <ISTTimer />
-      </div>
-
-      <Suspense fallback={<div className="flex items-center justify-center min-h-[50vh]"><Loader2 className="w-10 h-10 animate-spin text-primary" /></div>}>
-        <RegisterContent />
-      </Suspense>
-    </div>
+    <Suspense fallback={<div>Loading...</div>}>
+      <RegisterContent />
+    </Suspense>
   );
 }
+
+export default RegisterPage;
 
