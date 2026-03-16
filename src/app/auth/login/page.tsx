@@ -146,43 +146,28 @@ export default function LoginPage() {
       console.log("[Identity Protocol] Attempting login for:", targetEmail);
       // 1. Attempt Static Override first (for the 'easy' flow)
       if (storedPassword && storedPassword === password) {
-        console.log("[Identity Protocol] Static password match!");
-        // Authenticate via Supabase if possible, but prioritize the match
-        try {
-          const { data: authData } = await supabase.auth.signInWithPassword({
-            email: targetEmail,
-            password: password,
-          });
-          
-          if (!authData.user) throw new Error("Supabase auth failed");
-        } catch (e) {
-          console.warn("[Identity Protocol] Supabase auth failed, using static fallback:", e);
-          // Establish a Static Session for the provider to pick up
-          const staticUser = {
-            id: userProfile?.id || targetEmail.replace(/[^a-zA-Z0-9]/g, '_'),
-            email: targetEmail,
-            user_metadata: {
-              username: storedUsername || identifierInput,
-              role: storedRole
-            },
-            role: storedRole,
-            isStatic: true
-          };
-          sessionStorage.setItem('static_user', JSON.stringify(staticUser));
-        }
+        console.log("[Identity Protocol] Static password match! Establishing session...");
         
-        // Use a slight delay or window.location to ensure session is picked up
-        setTimeout(() => {
-          if (storedRole === "admin") {
-            window.location.href = "/dashboard/admin";
-          } else if (storedRole === "trader") {
-            window.location.href = "/dashboard/trader";
-          } else if (storedRole === "agent") {
-            window.location.href = "/dashboard/agent";
-          } else {
-            window.location.href = "/dashboard/client";
-          }
-        }, 100);
+        // Establish a Static Session for the provider and dashboard to pick up
+        const staticUser = {
+          id: userProfile?.id || targetEmail.replace(/[^a-zA-Z0-9]/g, '_'),
+          email: targetEmail,
+          user_metadata: {
+            username: storedUsername || identifierInput,
+            role: storedRole
+          },
+          role: storedRole,
+          isStatic: true
+        };
+        sessionStorage.setItem('static_user', JSON.stringify(staticUser));
+        
+        // IMMEDIATELY redirect to the correct dashboard
+        const dashboardPath = storedRole === "admin" ? "/dashboard/admin" : 
+                             storedRole === "trader" ? "/dashboard/trader" :
+                             storedRole === "agent" ? "/dashboard/agent" : "/dashboard/client";
+        
+        console.log("[Identity Protocol] Redirecting to:", dashboardPath);
+        window.location.href = dashboardPath;
         return;
       }
 
