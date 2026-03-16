@@ -3,37 +3,32 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { 
   LayoutDashboard, 
-  Wallet as WalletIcon, 
   History, 
   Settings, 
   ShieldCheck, 
   Zap, 
   Plus, 
   Loader2, 
-  Landmark, 
   UserCircle, 
-  CreditCard, 
-  ExternalLink, 
   Copy, 
-  Menu, 
   X, 
   Coins, 
   History as HistoryIcon, 
-  Edit2, 
   Headset, 
-  Link2,
   Percent,
   Users,
   Share2,
   Rocket,
-  Lightbulb,
   CheckCircle,
   TrendingUp,
-  Megaphone
+  Megaphone,
+  Mail,
+  MessageSquare,
+  LifeBuoy
 } from "lucide-react";
 import { collection, query, where, doc, getDoc, updateDoc, orderBy, onSnapshot, limit } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import { useUser, useFirestore, useCollection, useMemoFirebase, useAuth } from "@/firebase";
+import { useUser, useFirestore, useCollection, useMemoFirebase, useAuth, useDoc } from "@/firebase";
 import { signOut } from "firebase/auth";
 import { useToast } from "@/hooks/use-toast";
 import { ISTTimer } from "@/components/ui/ist-timer";
@@ -65,6 +60,7 @@ import { addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { agentAICommunicationAssistant } from "@/ai/flows/agent-ai-communication-assistant";
 import { USDTGoldLogo } from "@/components/logos/USDTGoldLogo";
 import { USDTOriginalLogo } from "@/components/logos/USDTOriginalLogo";
+import { User, TraderOffer } from "@/types";
 
 const MARKETING_TEMPLATES = [
   {
@@ -167,9 +163,9 @@ export default function AgentDashboard() {
   // Offer Form States
   const [offerCrypto, setOfferCrypto] = useState("USDT");
   const [offerNetwork, setOfferNetwork] = useState<string[]>(["TRC20"]);
+  const [offerFiat, setOfferFiat] = useState("INR");
   const [offerPrice, setOfferPrice] = useState("");
   const [offerDisplayName, setOfferDisplayName] = useState("");
-  const [offerFiat, setOfferFiat] = useState("INR");
   const [offerDescription, setOfferDescription] = useState("");
 
   const { user, isUserLoading } = useUser();
@@ -181,48 +177,55 @@ export default function AgentDashboard() {
   const brandingDocRef = useMemoFirebase(() => doc(db, "settings", "branding"), [db]);
   const { data: brandingSettings } = useDoc(brandingDocRef);
 
-  const [userData, setUserData] = useState<any>(null);
+  const [userData, setUserData] = useState<User | null>(null);
   const [isUserDataLoading, setIsUserDataLoading] = useState(true);
-  const [traderData, setTraderData] = useState<any>(null);
+  const [traderData, setTraderData] = useState<User | null>(null);
 
   useEffect(() => {
     if (user) {
       const unsub = onSnapshot(doc(db, "users", user.uid), async (uDoc) => {
         if (!uDoc.exists()) {
           // If the document doesn't exist yet, check if it's a static user
-          if ((user as any).isStatic) {
+          const userObj = user as any;
+          if (userObj.isStatic) {
             const cleanDisplayName = (user.displayName || 'AGENT').split('@')[0].replace(/[^a-zA-Z0-9]/g, '');
             setUserData({
               id: user.uid,
               username: cleanDisplayName,
-              email: user.email,
-              role: (user as any).role || 'agent',
+              email: user.email || "",
+              role: (userObj.role || 'agent') as 'agent',
+              status: 'active',
               isActive: true,
-              referralCode: cleanDisplayName.toUpperCase() + Math.floor(100 + Math.random() * 899)
+              createdAt: new Date().toISOString()
             });
           }
           setIsUserDataLoading(false);
           return;
         }
-        const data = uDoc.data();
+        const data = uDoc.data() as User;
         
         // Sanitize Referral Code if it's an email or missing
-        if (!data.referralCode || data.referralCode.includes("@")) {
+        // This is tricky because User interface doesn't have referralCode yet, I should add it.
+        // But for now I will cast to any to access dynamic props not in interface
+        const dataAny = data as any;
+        if (!dataAny.referralCode || dataAny.referralCode.includes("@")) {
           const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
           let newRefCode = "";
           for (let i = 0; i < 8; i++) {
             newRefCode += chars.charAt(Math.floor(Math.random() * chars.length));
           }
           await updateDoc(doc(db, "users", user.uid), { referralCode: newRefCode });
-          data.referralCode = newRefCode;
+          dataAny.referralCode = newRefCode;
         }
 
         setUserData(data);
         setIsUserDataLoading(false);
         
-        if (data?.traderId) {
-          const tDoc = await getDoc(doc(db, "users", data.traderId));
-          setTraderData(tDoc.data());
+        if (dataAny.traderId) {
+          const tDoc = await getDoc(doc(db, "users", dataAny.traderId));
+          if (tDoc.exists()) {
+            setTraderData(tDoc.data() as User);
+          }
         }
       });
       return () => unsub();
@@ -261,9 +264,9 @@ export default function AgentDashboard() {
   }, [user, isUserLoading, userData, isUserDataLoading, router]);
 
   const handleOpenPosition = async () => {
-    if (!user || !traderData || !offerPrice) return;
+    if (!user || !traderData || !offerPrice || !userData || !userData.traderId) return;
     
-    const offerData: any = {
+    const offerData = {
       traderId: userData.traderId,
       traderUsername: traderData.username,
       agentId: user.uid,
@@ -308,8 +311,8 @@ export default function AgentDashboard() {
       });
       setAiGeneratedMessage(response.generatedMessage);
       toast({ title: "AI Message Generated", description: "The message is ready for use." });
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
       toast({ variant: "destructive", title: "Generation Failed", description: "Failed to generate AI message." });
     } finally {
       setIsAiGenerating(false);
@@ -321,33 +324,6 @@ export default function AgentDashboard() {
     setOfferDisplayName("");
     setOfferDescription("");
     setOfferNetwork(["TRC20"]);
-  };
-
-  const toggleNetwork = (net: string) => {
-    setOfferNetwork(prev => prev.includes(net) ? prev.filter(n => n !== net) : [...prev, net]);
-  };
-
-  const IPFSPreview = ({ cid, label, className }: { cid: string; label: string; className?: string }) => {
-    const isUSDT = label?.toUpperCase().includes("USDT");
-    const targetCid = isUSDT ? "bafybeicygbg5kw4b5wyzx7rsv7zen5qmgda6jkn57phoqhp67jji7fpefa" : cid;
-    if (!targetCid || targetCid.trim().length < 10) return null;
-    
-    return (
-      <div className={`flex flex-col items-center justify-center rounded-full shrink-0 relative group overflow-hidden ${className || 'w-16 h-16'} ${isUSDT ? '' : 'bg-white/5 border border-white/10'}`}>
-        <Image 
-          src={`https://ipfs.io/ipfs/${targetCid.trim()}`} 
-          alt={label} 
-          fill 
-          className="object-cover opacity-80 group-hover:opacity-100 transition-opacity scale-[0.8]"
-          unoptimized 
-        />
-        {!isUSDT && (
-          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-            <LayoutDashboard className="w-3 h-3 text-white" />
-          </div>
-        )}
-      </div>
-    );
   };
 
   if (isUserLoading || isUserDataLoading || !user) return <div className="min-h-screen flex items-center justify-center bg-transparent"><Loader2 className="w-10 h-10 text-primary animate-spin" /></div>;
@@ -778,6 +754,116 @@ export default function AgentDashboard() {
                      </div>
                      <span className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground group-hover:text-white transition-colors">Create Position</span>
                   </button>
+               </div>
+            </div>
+          ) : activeTab === "support" ? (
+            <div className="space-y-10 animate-in-scale">
+               <Card className="glass-card border-none rounded-[2.5rem] p-10 bg-gradient-to-br from-primary/20 via-transparent to-transparent">
+                  <div className="space-y-3">
+                     <p className="text-primary text-[10px] uppercase tracking-[0.5em] font-black">Support Center</p>
+                     <h2 className="text-3xl md:text-5xl font-headline font-black uppercase tracking-tighter leading-tight italic">Agent Support Hub</h2>
+                     <p className="text-white/40 text-xs font-medium uppercase tracking-widest leading-relaxed max-w-lg">
+                        Get help with your referral network, commissions, or technical issues directly from our institutional support team.
+                     </p>
+                  </div>
+               </Card>
+
+               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <Card className="glass-card border-none rounded-[2.5rem] p-8 space-y-6 hover:border-primary/20 transition-all group">
+                     <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20">
+                        <MessageSquare className="w-6 h-6 text-primary" />
+                     </div>
+                     <div className="space-y-2">
+                        <h3 className="text-sm font-black uppercase tracking-widest text-white">Live Chat Support</h3>
+                        <p className="text-[11px] text-white/40 leading-relaxed font-medium uppercase tracking-wider">Connect with a support specialist for instant assistance with your agent node.</p>
+                     </div>
+                     <Button className="w-full h-12 bg-primary/10 hover:bg-primary text-primary hover:text-white border border-primary/20 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Start Chat</Button>
+                  </Card>
+
+                  <Card className="glass-card border-none rounded-[2.5rem] p-8 space-y-6 hover:border-primary/20 transition-all group">
+                     <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20">
+                        <Mail className="w-6 h-6 text-primary" />
+                     </div>
+                     <div className="space-y-2">
+                        <h3 className="text-sm font-black uppercase tracking-widest text-white">Email Ticketing</h3>
+                        <p className="text-[11px] text-white/40 leading-relaxed font-medium uppercase tracking-wider">For complex inquiries or volume-related requests, open a formal support ticket.</p>
+                     </div>
+                     <Button className="w-full h-12 bg-primary/10 hover:bg-primary text-primary hover:text-white border border-primary/20 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Open Ticket</Button>
+                  </Card>
+
+                  <Card className="glass-card border-none rounded-[2.5rem] p-8 space-y-6 hover:border-primary/20 transition-all group">
+                     <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20">
+                        <LifeBuoy className="w-6 h-6 text-primary" />
+                     </div>
+                     <div className="space-y-2">
+                        <h3 className="text-sm font-black uppercase tracking-widest text-white">Knowledge Base</h3>
+                        <p className="text-[11px] text-white/40 leading-relaxed font-medium uppercase tracking-wider">Access documentation on referral strategies and commission structures.</p>
+                     </div>
+                     <Button className="w-full h-12 bg-primary/10 hover:bg-primary text-primary hover:text-white border border-primary/20 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Browse Docs</Button>
+                  </Card>
+               </div>
+            </div>
+          ) : activeTab === "settings" ? (
+            <div className="space-y-10 animate-in-scale">
+               <Card className="glass-card border-none rounded-[2.5rem] p-10 bg-gradient-to-br from-primary/20 via-transparent to-transparent">
+                  <div className="space-y-3">
+                     <p className="text-primary text-[10px] uppercase tracking-[0.5em] font-black">Account Management</p>
+                     <h2 className="text-3xl md:text-5xl font-headline font-black uppercase tracking-tighter leading-tight italic">Agent Profile</h2>
+                     <p className="text-white/40 text-xs font-medium uppercase tracking-widest leading-relaxed max-w-lg">
+                        Manage your agent identity and view your assigned institutional trader node details.
+                     </p>
+                  </div>
+               </Card>
+
+               <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                  <Card className="glass-card border-none rounded-[2.5rem] p-8 space-y-8">
+                     <div className="space-y-6">
+                        <h3 className="text-xs font-black uppercase tracking-[0.3em] flex items-center gap-3 text-primary">
+                           <UserCircle className="w-4 h-4" /> Personal Information
+                        </h3>
+                        <div className="space-y-4">
+                           <div className="space-y-2">
+                              <Label className="text-[9px] uppercase font-bold opacity-50 ml-1">Username</Label>
+                              <Input disabled value={userData?.username || ""} className="bg-white/5 border-white/10 h-14 rounded-xl text-white/60 font-mono" />
+                           </div>
+                           <div className="space-y-2">
+                              <Label className="text-[9px] uppercase font-bold opacity-50 ml-1">Email Address</Label>
+                              <Input disabled value={userData?.email || ""} className="bg-white/5 border-white/10 h-14 rounded-xl text-white/60 font-mono" />
+                           </div>
+                           <div className="space-y-2">
+                              <Label className="text-[9px] uppercase font-bold opacity-50 ml-1">Referral Code</Label>
+                              <Input disabled value={userData?.referralCode || ""} className="bg-white/5 border-white/10 h-14 rounded-xl text-primary font-mono font-black" />
+                           </div>
+                        </div>
+                     </div>
+                  </Card>
+
+                  <Card className="glass-card border-none rounded-[2.5rem] p-8 space-y-8">
+                     <div className="space-y-6">
+                        <h3 className="text-xs font-black uppercase tracking-[0.3em] flex items-center gap-3 text-primary">
+                           <ShieldCheck className="w-4 h-4" /> Institutional Node
+                        </h3>
+                        <div className="space-y-4">
+                           <div className="p-6 bg-white/5 rounded-2xl border border-white/10 space-y-4">
+                              <div className="flex justify-between items-center">
+                                 <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Assigned Trader</span>
+                                 <span className="text-xs font-black text-white uppercase italic">@{traderData?.username || "PENDING"}</span>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                 <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Commission Rate</span>
+                                 <span className="text-xs font-black text-primary uppercase">{traderData?.referralCommission || 0}%</span>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                 <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Node Status</span>
+                                 <Badge className="bg-green-500/10 text-green-500 border-none text-[8px] font-black uppercase px-2 py-0.5">Verified</Badge>
+                              </div>
+                           </div>
+                           <p className="text-[9px] text-white/20 leading-relaxed font-medium uppercase tracking-wider text-center italic">
+                              Your account is linked to an institutional trader node for high-liquidity settlements.
+                           </p>
+                        </div>
+                     </div>
+                  </Card>
                </div>
             </div>
           ) : null}

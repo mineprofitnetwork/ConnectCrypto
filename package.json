@@ -60,7 +60,7 @@
     "@types/react": "^19.2.1",
     "@types/react-dom": "^19.2.1",
     "eslint": "9.39.4",
-    "eslint-config-next": "16.1.6",
+    "eslint-config-next": "^15.1.6",
     "firebase-tools": "^15.10.0",
     "genkit-cli": "^1.28.0",
     "postcss": "^8",

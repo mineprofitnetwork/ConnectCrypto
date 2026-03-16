@@ -6,12 +6,11 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, ShieldAlert, Zap, Heart } from "lucide-react";
+import { Loader2, Heart } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth, useUser, useFirestore } from "@/firebase";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
-import { setDocumentNonBlocking, deleteDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { ISTTimer } from "@/components/ui/ist-timer";
 import Link from "next/link";
 
@@ -35,7 +34,7 @@ export default function LoginPage() {
         else if (staticUser.role === 'agent') router.push('/dashboard/agent');
         else router.push('/dashboard/client');
         return;
-      } catch (e) {}
+      } catch (_e) {}
     }
 
     if (user && !isUserLoading) {
@@ -108,31 +107,27 @@ export default function LoginPage() {
     const identifierInput = (formData.get("email") as string).trim();
     const password = formData.get("password") as string;
 
-    let loginEmail = identifierInput.toLowerCase();
+    const loginEmail = identifierInput.toLowerCase();
 
     // Static lookup for custom overrides
     let targetEmail = loginEmail;
     let storedPassword = null;
     let storedRole = null;
     let storedUsername = null;
+    let userProfile = null;
 
     if (!loginEmail.includes("@")) {
-      const userProfile = await findUserByAlias(identifierInput);
-      if (userProfile) {
-        const data = userProfile.data();
-        targetEmail = data.email;
-        storedPassword = data.password;
-        storedRole = data.role;
-        storedUsername = data.username;
-      }
+      userProfile = await findUserByAlias(identifierInput);
     } else {
-      const userProfile = await findUserByEmail(loginEmail);
-      if (userProfile) {
-        const data = userProfile.data();
-        storedPassword = data.password;
-        storedRole = data.role;
-        storedUsername = data.username;
-      }
+      userProfile = await findUserByEmail(loginEmail);
+    }
+
+    if (userProfile) {
+      const data = userProfile.data();
+      targetEmail = data.email;
+      storedPassword = data.password;
+      storedRole = data.role;
+      storedUsername = data.username;
     }
 
     try {
@@ -145,7 +140,7 @@ export default function LoginPage() {
           console.warn("[Identity Protocol] Firebase auth failed, using static fallback:", e);
           // Establish a Static Session for the provider to pick up
           const staticUser = {
-            uid: targetEmail.replace(/[^a-zA-Z0-9]/g, '_'), // Mock UID
+            uid: userProfile?.id || targetEmail.replace(/[^a-zA-Z0-9]/g, '_'), // Use real UID if available
             email: targetEmail,
             displayName: storedUsername || identifierInput,
             role: storedRole, // Ensure role is preserved for dashboard logic
@@ -187,7 +182,7 @@ export default function LoginPage() {
         window.location.href = "/dashboard/client";
       }
 
-    } catch (error: any) {
+    } catch (error) {
       console.error("Login Protocol Error:", error);
       toast({ variant: "destructive", title: "Access Denied", description: "Invalid credentials." });
       setErrorHint(true);

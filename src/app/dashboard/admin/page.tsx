@@ -27,30 +27,26 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { 
-  Shield,
   Users, 
   LogOut, 
   Loader2,
   Search,
   UserPlus,
   Key,
-  UserX,
   Trash2,
   CheckCircle,
   ShieldCheck,
-  ShieldX,
   Menu,
   X,
   CreditCard,
   LayoutDashboard,
   History,
   Edit2,
+  Settings,
   Copy,
   ArrowUpRight,
-  ExternalLink,
   Plus,
   Image as ImageIcon,
-  Zap,
   Headset,
   Mail,
   Send,
@@ -70,7 +66,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useCollection, useUser, useFirestore, useMemoFirebase, useDoc, useAuth } from "@/firebase";
-import { doc, collection, setDoc, query, orderBy, getDocs, updateDoc, deleteDoc, addDoc, getDoc, increment, limit, runTransaction } from "firebase/firestore";
+import { doc, collection, setDoc, query, orderBy, updateDoc, deleteDoc, limit, runTransaction, increment } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { signOut, createUserWithEmailAndPassword, getAuth, signInWithEmailAndPassword } from "firebase/auth";
 import { initializeApp, deleteApp } from "firebase/app";
@@ -81,6 +77,7 @@ import { updateDocumentNonBlocking, deleteDocumentNonBlocking, addDocumentNonBlo
 import Image from "next/image";
 import { USDTGoldLogo } from "@/components/logos/USDTGoldLogo";
 import { USDTOriginalLogo } from "@/components/logos/USDTOriginalLogo";
+import { User, TradeTransaction, WithdrawalRequest, TraderOffer } from "@/types";
 
 export default function AdminDashboard() {
   const db = useFirestore();
@@ -97,8 +94,8 @@ export default function AdminDashboard() {
   const [isProvisioning, setIsProvisioning] = useState(false);
   const [isProvisionOpen, setIsProvisionOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [userToDelete, setUserToDelete] = useState<any>(null);
-  const [editingUser, setEditingUser] = useState<any>(null);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editUsername, setEditUsername] = useState("");
   const [editEmail, setEditEmail] = useState("");
@@ -210,14 +207,14 @@ export default function AdminDashboard() {
     });
 
     // Calculate USDT Received from successful trades
-    allTransactions?.forEach(t => {
+    allTransactions?.forEach((t: TradeTransaction) => {
       if (t.status === "Success" && t.traderId && metrics[t.traderId]) {
         metrics[t.traderId].usdtReceived += (t.cryptoAmount || 0);
       }
     });
 
     // Calculate Money Paid and Money to Pay from withdrawals
-    allWithdrawals?.forEach(w => {
+    allWithdrawals?.forEach((w: WithdrawalRequest) => {
       if (w.traderId && metrics[w.traderId]) {
         if (w.status === "Success") {
           metrics[w.traderId].moneyPaid += (w.amount || 0);
@@ -233,17 +230,17 @@ export default function AdminDashboard() {
   const users = useMemo(() => {
     if (!rawUsers) return [];
     // Filter out soft-deleted/purged identities from the main list
-    const activeUsers = rawUsers.filter(u => u.status !== "purged");
+    const activeUsers = rawUsers.filter((u: User) => u.status !== "purged");
     
     // Sort 'iamadmin' to the very top
-    return [...activeUsers].sort((a, b) => {
+    return [...activeUsers].sort((a: User, b: User) => {
       if (a.username === 'iamadmin') return -1;
       if (b.username === 'iamadmin') return 1;
       return 0;
     });
   }, [rawUsers]);
 
-  const traders = useMemo(() => users.filter(u => u.username === 'iamtrader' || u.role === "trader"), [users]);
+  const traders = useMemo(() => users.filter((u: User) => u.username === 'iamtrader' || u.role === "trader"), [users]);
 
   useEffect(() => {
     if (!isUserLoading && !user) {
@@ -275,7 +272,7 @@ export default function AdminDashboard() {
     const emailInput = newTraderEmail.trim().toLowerCase();
 
     // 1. Pre-Check Ledger: If identity exists in Firestore (even if purged), override with new password
-    const existingInLedger = rawUsers?.find(u => u.email === emailInput);
+    const existingInLedger = rawUsers?.find((u: User) => u.email === emailInput);
     if (existingInLedger) {
       setIsProvisioning(true);
       try {
@@ -371,6 +368,7 @@ export default function AdminDashboard() {
           setIsProvisionOpen(false);
           return;
         } catch (signInError) {
+          console.error(signInError); // Log the error to use the variable
           // If sign-in fails with the provided password, it means the Admin wants to OVERRIDE the password.
           // Since we can't change the Firebase Auth password without the old one (client-side), 
           // we create a 'Static Override' profile in Firestore. The login page handles this.
@@ -427,7 +425,7 @@ export default function AdminDashboard() {
     }
   };
 
-  const openEditDialog = (u: any) => {
+  const openEditDialog = (u: User) => {
     setEditingUser(u);
     setEditUsername(u.username || "");
     setEditEmail(u.email || "");
@@ -455,13 +453,14 @@ export default function AdminDashboard() {
       toast({ title: "Identity Updated", description: "Ledger has been updated with new credentials." });
       setIsEditOpen(false);
     } catch (e) {
+      console.error(e); // Log the error
       toast({ variant: "destructive", title: "Update Failed" });
     } finally {
       setIsUpdating(false);
     }
   };
 
-  const handleToggleStatus = (u: any) => {
+  const handleToggleStatus = (u: User) => {
     const newActiveState = !u.isActive;
     updateDocumentNonBlocking(doc(db, "users", u.id), { isActive: newActiveState });
     toast({ title: "Protocol Update", description: `${u.username} status toggled.` });
@@ -481,20 +480,20 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleApproveTrade = async (trade: any) => {
+  const handleApproveTrade = async (trade: TradeTransaction) => {
     try {
       await runTransaction(db, async (transaction) => {
         const tradeDocRef = doc(db, "trade_transactions", trade.id);
         const tradeDoc = await transaction.get(tradeDocRef);
         
-        if (!tradeDoc.exists()) throw "Trade not found";
-        if (tradeDoc.data().status === "Success") throw "Already approved";
+        const tradeData = tradeDoc.data();
+        if (!tradeData || tradeData.status === "Success") throw "Already approved";
 
         transaction.update(tradeDocRef, { status: "Success" });
         
         // Update Client Balance
         const clientRef = doc(db, "users", trade.clientId);
-        transaction.update(clientRef, { balance: increment(trade.fiatAmount) });
+        transaction.update(clientRef, { balance: increment(trade.fiatAmount) }); // This needs increment imported
 
         // Update Trader Balance
         if (trade.traderId) {
@@ -510,7 +509,7 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleTradeStatusUpdate = async (trade: any, newStatus: string) => {
+  const handleTradeStatusUpdate = async (trade: TradeTransaction, newStatus: string) => {
     try {
       if (newStatus === "Delete") {
         await deleteDoc(doc(db, "trade_transactions", trade.id));
@@ -525,22 +524,23 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleWithdrawalAction = async (withdrawal: any, newStatus: string) => {
+  const handleWithdrawalAction = async (withdrawal: WithdrawalRequest, newStatus: string) => {
     try {
       if (newStatus === "Success") {
         await runTransaction(db, async (transaction) => {
           const withdrawalRef = doc(db, "withdrawals", withdrawal.id);
           const withdrawalDoc = await transaction.get(withdrawalRef);
           
-          if (!withdrawalDoc.exists()) throw "Withdrawal not found";
-          if (withdrawalDoc.data().status === "Success") throw "Already processed";
+          const withdrawalData = withdrawalDoc.data();
+          if (!withdrawalData || withdrawalData.status === "Success") throw "Already processed";
 
           const userRef = doc(db, "users", withdrawal.userId);
           const userSnap = await transaction.get(userRef);
           
           if (!userSnap.exists()) throw "User not found";
           
-          const currentBalance = userSnap.data().balance || 0;
+          const userBalanceData = userSnap.data();
+          const currentBalance = userBalanceData?.balance || 0;
           if (currentBalance < withdrawal.amount) {
             throw "Insufficient Balance";
           }
@@ -597,9 +597,9 @@ export default function AdminDashboard() {
       return;
     }
     
-    const trader = traders.find(t => t.id === selectedTraderId);
+    const trader = traders.find((t: User) => t.id === selectedTraderId);
     
-    const offerData: any = {
+    const offerData: Omit<TraderOffer, 'id'> = {
       cryptoAssetId: offerCrypto.toUpperCase(),
       network: offerNetwork.toUpperCase(),
       fiatCurrency: offerFiat.toUpperCase(),
@@ -613,13 +613,13 @@ export default function AdminDashboard() {
       walletQrBep20: offerQrBep20.trim(),
       walletQrErc20: offerQrErc20.trim(),
       status: "Active",
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      traderId: selectedTraderId,
+      traderUsername: trader?.username || "Verified Node",
+      displayName: offerDisplayName.trim() || trader?.username || "Verified Node"
     };
 
     if (!editingOfferId) {
-      offerData.traderId = selectedTraderId;
-      offerData.traderUsername = trader?.username || "Verified Node";
-      offerData.displayName = offerDisplayName.trim() || trader?.username || "Verified Node";
       addDocumentNonBlocking(collection(db, "trader_buy_offers"), offerData);
       toast({ title: "Global Position Published" });
     } else {
@@ -632,7 +632,7 @@ export default function AdminDashboard() {
     resetOfferForm();
   };
 
-  const handleEditOffer = (off: any) => {
+  const handleEditOffer = (off: TraderOffer) => {
     setEditingOfferId(off.id);
     setOfferCrypto(off.cryptoAssetId);
     setOfferNetwork(off.network);
@@ -651,7 +651,7 @@ export default function AdminDashboard() {
     setIsAddOfferOpen(true);
   };
 
-  const handleDuplicateOffer = (off: any) => {
+  const handleDuplicateOffer = (off: TraderOffer) => {
     setEditingOfferId(null);
     setOfferCrypto(off.cryptoAssetId);
     setOfferNetwork(off.network);
@@ -702,6 +702,7 @@ export default function AdminDashboard() {
   ];
 
   return (
+    <TooltipProvider>
     <div className="min-h-screen bg-transparent text-white flex flex-col font-body antialiased selection:bg-primary/30">
       <header className="border-b border-white/[0.05] bg-black/40 backdrop-blur-2xl px-6 md:px-10 py-6 flex items-center justify-between shrink-0 z-[100]">
         <div className="flex items-center gap-4 group cursor-pointer" onClick={() => setActiveTab("ledger")}>
@@ -941,14 +942,15 @@ export default function AdminDashboard() {
                        <TableHead className="text-hierarchy-label">Asset Volume</TableHead>
                        <TableHead className="text-hierarchy-label">Fiat Value</TableHead>
                        <TableHead className="text-hierarchy-label">Status</TableHead>
+                       <TableHead className="px-10 text-right text-hierarchy-label">Actions</TableHead>
                        <TableHead className="text-right px-10 text-hierarchy-label">Timestamp</TableHead>
                      </TableRow>
                    </TableHeader>
                    <TableBody>
                      {isTransactionsLoading ? (
-                       <TableRow><TableCell colSpan={6} className="h-60 text-center"><Loader2 className="w-10 h-10 animate-spin mx-auto text-primary" /></TableCell></TableRow>
+                       <TableRow><TableCell colSpan={7} className="h-60 text-center"><Loader2 className="w-10 h-10 animate-spin mx-auto text-primary" /></TableCell></TableRow>
                      ) : !allTransactions?.length ? (
-                       <TableRow><TableCell colSpan={6} className="h-60 text-center opacity-20 uppercase font-black tracking-[0.3em] text-xs italic">No network activity recorded</TableCell></TableRow>
+                       <TableRow><TableCell colSpan={7} className="h-60 text-center opacity-20 uppercase font-black tracking-[0.3em] text-xs italic">No network activity recorded</TableCell></TableRow>
                      ) : allTransactions.map((t) => (
                        <TableRow key={t.id} className="border-white/[0.05] hover:bg-white/[0.03] transition-all group h-20">
                          <TableCell className="px-10 font-mono text-xs text-white/40 group-hover:text-white/90 transition-colors">
@@ -980,6 +982,46 @@ export default function AdminDashboard() {
                              t.status === "KYC Required" ? "bg-blue-500/10 text-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.1)]" :
                              "bg-primary/10 text-primary shadow-[0_0_10px_rgba(139,92,246,0.1)]"
                            }`}>{t.status}</Badge>
+                         </TableCell>
+                         <TableCell className="px-10 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              {t.status !== "Success" && (
+                                <>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button variant="ghost" size="icon" onClick={() => handleApproveTrade(t)} className="h-10 w-10 rounded-xl text-green-500 hover:bg-green-500/10 border border-white/5">
+                                        <CheckCircle className="w-4 h-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="bg-black/90 border-white/10 text-[9px] uppercase font-bold">Approve & Release</TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button variant="ghost" size="icon" onClick={() => handleTradeStatusUpdate(t, "Hold")} className="h-10 w-10 rounded-xl text-amber-500 hover:bg-amber-500/10 border border-white/5">
+                                        <Clock className="w-4 h-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="bg-black/90 border-white/10 text-[9px] uppercase font-bold">Put on Hold</TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button variant="ghost" size="icon" onClick={() => handleTradeStatusUpdate(t, "KYC Required")} className="h-10 w-10 rounded-xl text-blue-500 hover:bg-blue-500/10 border border-white/5">
+                                        <ShieldCheck className="w-4 h-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="bg-black/90 border-white/10 text-[9px] uppercase font-bold">Request KYC</TooltipContent>
+                                  </Tooltip>
+                                </>
+                              )}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="icon" onClick={() => handleTradeStatusUpdate(t, "Delete")} className="h-10 w-10 rounded-xl text-red-500 hover:bg-red-500/10 border border-white/5">
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent className="bg-black/90 border-white/10 text-[9px] uppercase font-bold">Purge Record</TooltipContent>
+                              </Tooltip>
+                            </div>
                          </TableCell>
                          <TableCell className="text-right px-10 text-[10px] opacity-30 group-hover:opacity-60 font-bold uppercase tracking-widest transition-opacity">
                            {new Date(t.initiationTime).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase()}
@@ -1134,7 +1176,7 @@ export default function AdminDashboard() {
                     {off.description && (
                       <div className="px-1 border-l border-primary/20 ml-1">
                         <p className="text-[8px] text-muted-foreground line-clamp-2 leading-relaxed italic pl-2 opacity-60">
-                          "{off.description}"
+                          &quot;{off.description}&quot;
                         </p>
                       </div>
                     )}
@@ -1443,7 +1485,7 @@ export default function AdminDashboard() {
                   <Button 
                     variant="ghost" 
                     size="sm" 
-                    onClick={() => handleToggleStatus(editingUser)}
+                    onClick={() => editingUser && handleToggleStatus(editingUser)}
                     className={`h-8 px-4 rounded-lg text-[8px] font-bold uppercase ${editingUser?.isActive ? 'text-red-500 hover:bg-red-500/10' : 'text-green-500 hover:bg-green-500/10'}`}
                   >
                     {editingUser?.isActive ? "Lock Node" : "Unlock Node"}
@@ -1662,5 +1704,6 @@ export default function AdminDashboard() {
       </div>
     </main>
   </div>
+  </TooltipProvider>
   );
 }

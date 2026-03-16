@@ -14,7 +14,6 @@ import {
   Copy,
   ShieldCheck,
   History,
-  Heart,
   LayoutDashboard,
   Menu,
   X,
@@ -42,8 +41,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
-  DialogDescription
+  DialogFooter
 } from "@/components/ui/dialog";
 import { 
   AlertDialog,
@@ -56,7 +54,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useUser, useFirestore, useCollection, useMemoFirebase, useDoc } from "@/firebase";
-import { collection, query, where, getDocs, doc, setDoc, orderBy, limit } from "firebase/firestore";
+import { collection, query, where, doc, setDoc, orderBy, limit } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/firebase";
 import { signOut } from "firebase/auth";
@@ -66,6 +64,7 @@ import { ISTTimer } from "@/components/ui/ist-timer";
 import { USDTGoldLogo } from "@/components/logos/USDTGoldLogo";
 import { USDTOriginalLogo } from "@/components/logos/USDTOriginalLogo";
 import Image from "next/image";
+import { User, TradeTransaction, WithdrawalRequest, TraderOffer } from "@/types";
 
 const LIVE_ACTIVITIES = [
   { name: "Arjun Sharma", action: "DEPOSITED", amount: "500 USDT" },
@@ -87,7 +86,7 @@ const LIVE_ACTIVITIES = [
 
 export default function ClientDashboard() {
   const [activeTab, setActiveTab] = useState("marketplace");
-  const [selectedTrader, setSelectedTrader] = useState<any>(null);
+  const [selectedTrader, setSelectedTrader] = useState<TraderOffer | null>(null);
   const [selectedNetwork, setSelectedNetwork] = useState("TRC20");
   const [cryptoAmount, setCryptoAmount] = useState("100");
   const [txHash, setTxHash] = useState("");
@@ -122,13 +121,13 @@ export default function ClientDashboard() {
   const { data: marketplaceOffers, isLoading: isOffersLoading } = useCollection(buyOffersQuery);
 
   const myTradesQuery = useMemoFirebase(() => user ? query(collection(db, "trade_transactions"), where("clientId", "==", user.uid), orderBy("initiationTime", "desc"), limit(100)) : null, [db, user?.uid]);
-  const { data: myTrades, isLoading: isTradesLoading } = useCollection(myTradesQuery);
+  const { data: myTrades } = useCollection(myTradesQuery);
 
   const gatewaysQuery = useMemoFirebase(() => user ? query(collection(db, "users", user.uid, "fiat_payment_methods"), orderBy("createdAt", "desc"), limit(20)) : null, [db, user?.uid]);
-  const { data: gateways, isLoading: isGatewaysLoading } = useCollection(gatewaysQuery);
+  const { data: gateways } = useCollection(gatewaysQuery);
 
   const withdrawalsQuery = useMemoFirebase(() => user ? query(collection(db, "withdrawals"), where("userId", "==", user.uid), orderBy("createdAt", "desc"), limit(50)) : null, [db, user?.uid]);
-  const { data: myWithdrawals, isLoading: isWithdrawalsLoading } = useCollection(withdrawalsQuery);
+  const { data: myWithdrawals } = useCollection(withdrawalsQuery);
 
   const brandingDocRef = useMemoFirebase(() => doc(db, "settings", "branding"), [db]);
   const { data: brandingSettings } = useDoc(brandingDocRef);
@@ -140,18 +139,20 @@ export default function ClientDashboard() {
     const balances: Record<string, { balance: number; name: string }> = {};
     
     // Add successful trades to balance
-    myTrades?.forEach(trade => {
+    myTrades?.forEach((trade: TradeTransaction) => {
       if (trade.status === "Success") {
         const tId = trade.traderId;
-        if (!balances[tId]) {
-          balances[tId] = { balance: 0, name: trade.traderUsername || "Unknown Trader" };
+        if (tId) {
+          if (!balances[tId]) {
+            balances[tId] = { balance: 0, name: trade.traderUsername || "Unknown Trader" };
+          }
+          balances[tId].balance += (trade.fiatAmount || 0);
         }
-        balances[tId].balance += (trade.fiatAmount || 0);
       }
     });
 
     // Subtract successful withdrawals from balance
-    myWithdrawals?.forEach(withdrawal => {
+    myWithdrawals?.forEach((withdrawal: WithdrawalRequest) => {
       if (withdrawal.status === "Success" && withdrawal.traderId) {
         const tId = withdrawal.traderId;
         if (balances[tId]) {
@@ -204,26 +205,26 @@ export default function ClientDashboard() {
       // but keep the isRerouted flag so we can show a warning or diagnostic
       if (!wallet) {
         if (selectedNetwork === "TRC20") {
-          wallet = selectedTrader.walletAddressTrc20;
-          qr = selectedTrader.walletQrTrc20;
+          wallet = selectedTrader.walletAddressTrc20 || "";
+          qr = selectedTrader.walletQrTrc20 || "";
         } else if (selectedNetwork === "BEP20") {
-          wallet = selectedTrader.walletAddressBep20;
-          qr = selectedTrader.walletQrBep20;
+          wallet = selectedTrader.walletAddressBep20 || "";
+          qr = selectedTrader.walletQrBep20 || "";
         } else if (selectedNetwork === "ERC20") {
-          wallet = selectedTrader.walletAddressErc20;
-          qr = selectedTrader.walletQrErc20;
+          wallet = selectedTrader.walletAddressErc20 || "";
+          qr = selectedTrader.walletQrErc20 || "";
         }
       }
     } else {
       if (selectedNetwork === "TRC20") {
-        wallet = selectedTrader.walletAddressTrc20;
-        qr = selectedTrader.walletQrTrc20;
+        wallet = selectedTrader.walletAddressTrc20 || "";
+        qr = selectedTrader.walletQrTrc20 || "";
       } else if (selectedNetwork === "BEP20") {
-        wallet = selectedTrader.walletAddressBep20;
-        qr = selectedTrader.walletQrBep20;
+        wallet = selectedTrader.walletAddressBep20 || "";
+        qr = selectedTrader.walletQrBep20 || "";
       } else if (selectedNetwork === "ERC20") {
-        wallet = selectedTrader.walletAddressErc20;
-        qr = selectedTrader.walletQrErc20;
+        wallet = selectedTrader.walletAddressErc20 || "";
+        qr = selectedTrader.walletQrErc20 || "";
       }
     }
     
@@ -257,7 +258,7 @@ export default function ClientDashboard() {
     router.replace("/auth/login");
   };
 
-  const initiateTrade = (offer: any) => {
+  const initiateTrade = (offer: TraderOffer) => {
     setSelectedTrader(offer);
     setStep(2);
     setCryptoAmount("100");
@@ -361,7 +362,7 @@ export default function ClientDashboard() {
       return;
     }
 
-    const gateway = gateways?.find(g => g.id === selectedGatewayId);
+    const gateway = gateways?.find((g: any) => g.id === selectedGatewayId);
     const traderName = traderBalances[selectedTraderId]?.name || "Unknown Trader";
 
     addDocumentNonBlocking(collection(db, "withdrawals"), {
@@ -422,6 +423,7 @@ export default function ClientDashboard() {
       });
       toast({ title: "KYC Submitted", description: "Your verification request has been sent." });
     } catch (e) {
+      console.error(e);
       toast({ variant: "destructive", title: "Submission Failed" });
     } finally {
       setIsKycSubmitting(false);
@@ -455,8 +457,6 @@ export default function ClientDashboard() {
 
   const totalEarnings = myTrades?.filter(t => t.status === "Success").reduce((acc, t) => acc + (t.fiatAmount || 0), 0) || 0;
   const totalBonus = myTrades?.filter(t => t.status === "Success" && t.isBonusApplied).reduce((acc, t) => acc + (t.bonusAmount || 0), 0) || 0;
-  const totalWithdrawn = myWithdrawals?.filter(w => w.status === "Success").reduce((acc, w) => acc + (w.amount || 0), 0) || 0;
-  const pendingWithdrawals = myWithdrawals?.filter(w => w.status === "Pending").reduce((acc, w) => acc + (w.amount || 0), 0) || 0;
   const isKycRequested = myTrades?.some(t => t.status === "KYC Required") || myWithdrawals?.some(w => w.status === "Verification Required");
 
   const meetsBonusThreshold = parseFloat(cryptoAmount) >= 500 && selectedTrader?.cryptoAssetId?.toUpperCase().includes("USDT");
@@ -822,7 +822,7 @@ export default function ClientDashboard() {
                           {offer.description && (
                             <div className="px-4 py-3 bg-white/[0.02] border-l-2 border-primary/40 rounded-r-xl group-hover/offer:bg-white/[0.04] transition-colors">
                               <p className="text-[11px] text-muted-foreground leading-relaxed italic opacity-60 line-clamp-2">
-                                "{offer.description}"
+                                &quot;{offer.description}&quot;
                               </p>
                             </div>
                           )}
@@ -844,7 +844,7 @@ export default function ClientDashboard() {
               )}
 
               
-              {step === 2 && (
+              {step === 2 && selectedTrader && (
                 <Card className="glass-card border-none rounded-[3rem] overflow-hidden max-w-2xl mx-auto animate-in-scale">
                   <CardHeader className="bg-primary/10 p-8 flex flex-row items-center gap-6 border-b border-white/5">
                     <Button variant="outline" onClick={() => setStep(1)} className="rounded-2xl h-12 w-12 border-white/10 bg-white/5 p-0 shrink-0 hover:bg-white/10 transition-all">
@@ -1182,16 +1182,15 @@ export default function ClientDashboard() {
                 </CardContent>
               </Card>
             </div>
-          ) : activeTab === "support" ? (
-
-          <div className="max-w-5xl mx-auto space-y-12 pb-20 animate-in-scale">
-            <div className="text-center space-y-4 mb-12">
-              <div className="w-20 h-20 bg-primary/10 rounded-[2rem] flex items-center justify-center mx-auto border border-primary/20 glow-primary">
-                <ShieldCheck className="w-10 h-10 text-primary" />
-              </div>
-              <h2 className="text-4xl font-headline font-black uppercase tracking-tighter text-white">Institutional Trust Center</h2>
-              <p className="text-primary text-[10px] uppercase tracking-[0.4em] font-bold">Verified Regulatory Compliance & Security Standards</p>
-            </div>
+          ) : activeTab === "trust" ? (
+            <div className="max-w-5xl mx-auto space-y-12 pb-20 animate-in-scale">
+               <div className="text-center space-y-4 mb-12">
+                  <div className="w-20 h-20 bg-primary/10 rounded-[2rem] flex items-center justify-center mx-auto border border-primary/20 glow-primary">
+                     <ShieldCheck className="w-10 h-10 text-primary" />
+                  </div>
+                  <h2 className="text-4xl font-headline font-black uppercase tracking-tighter text-white">Institutional Trust Center</h2>
+                  <p className="text-primary text-[10px] uppercase tracking-[0.4em] font-bold">Verified Regulatory Compliance & Security Standards</p>
+               </div>
 
             {/* Verification Badges */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1363,8 +1362,8 @@ export default function ClientDashboard() {
                     <p className="text-[10px] text-muted-foreground leading-relaxed">Ensure you upload the correct Transaction Hash (TXID) after sending crypto. Our nodes verify this against the blockchain ledger instantly.</p>
                   </div>
                   <div className="space-y-1 pt-3 border-t border-white/5">
-                    <p className="text-xs font-bold text-white uppercase tracking-tight">Why is my trade on "Hold"?</p>
-                    <p className="text-[10px] text-muted-foreground leading-relaxed">Positions may be flagged for manual review if the hash is incorrect or the amount doesn't match the order. Contact support with proof of payment.</p>
+                    <p className="text-xs font-bold text-white uppercase tracking-tight">Why is my trade on &quot;Hold&quot;?</p>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">Positions may be flagged for manual review if the hash is incorrect or the amount doesn&apos;t match the order. Contact support with proof of payment.</p>
                   </div>
                   <div className="space-y-1 pt-3 border-t border-white/5">
                     <p className="text-xs font-bold text-white uppercase tracking-tight">What is the 2% Bonus?</p>

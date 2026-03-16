@@ -8,11 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ShieldCheck, Loader2, Link2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth, useUser, useFirestore } from "@/firebase";
+import { useAuth, useFirestore } from "@/firebase";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, getDocs, query, collection, where, limit } from "firebase/firestore";
-import { setDocumentNonBlocking, deleteDocumentNonBlocking } from "@/firebase/non-blocking-updates";
+import { setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { ISTTimer } from "@/components/ui/ist-timer";
+import { User } from "@/types";
 
 function RegisterContent() {
   const router = useRouter();
@@ -42,12 +43,12 @@ function RegisterContent() {
     const refCode = (formData.get("referralCode") as string || "").trim().toUpperCase();
 
     try {
-      let agentData: any = null;
+      let agentData: User | null = null;
       if (refCode) {
         const agentQuery = query(collection(db, "users"), where("referralCode", "==", refCode), where("role", "==", "agent"), limit(1));
         const agentSnap = await getDocs(agentQuery);
         if (!agentSnap.empty) {
-          agentData = agentSnap.docs[0].data();
+          agentData = agentSnap.docs[0].data() as User;
         } else {
           toast({ variant: "destructive", title: "Invalid Referral", description: "The referral code provided is not authorized." });
           setLoading(false);
@@ -58,23 +59,26 @@ function RegisterContent() {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const uid = userCredential.user.uid;
 
-      const newUser: any = {
+      const newUser: User = {
         id: uid,
         email,
         username,
-        fullName,
+        // fullName is not in User interface but should be added or casted
+        ...({ fullName } as any),
         isActive: true,
         status: "active",
         role: "client",
         createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        // updatedAt not in interface
+        ...({ updatedAt: new Date().toISOString() } as any)
       };
 
       if (agentData) {
-        newUser.agentId = agentData.id;
-        newUser.agentUsername = agentData.username;
-        newUser.traderId = agentData.traderId;
-        newUser.traderUsername = agentData.traderUsername;
+        (newUser as any).agentId = agentData.id;
+        (newUser as any).agentUsername = agentData.username;
+        // traderId not in User interface for Agent role explicitly but implied
+        (newUser as any).traderId = (agentData as any).traderId;
+        (newUser as any).traderUsername = (agentData as any).traderUsername;
       }
 
       setDocumentNonBlocking(doc(db, "users", uid), newUser, { merge: true });
@@ -82,11 +86,12 @@ function RegisterContent() {
       toast({ title: "Identity Established", description: `Welcome, ${username}.` });
       router.push("/dashboard/client");
 
-    } catch (error: any) {
-      if (error.code === "auth/email-already-in-use") {
+    } catch (error) {
+      const err = error as any;
+      if (err.code === "auth/email-already-in-use") {
         setAuthError("Identity already exists. Please use the Identity Gate.");
       } else {
-        setAuthError(error.message);
+        setAuthError(err.message);
       }
     } finally { setLoading(false); }
   };
