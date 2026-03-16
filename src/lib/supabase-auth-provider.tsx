@@ -40,8 +40,12 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+      // Only update if we don't have a static user session
+      const hasStaticUser = typeof window !== 'undefined' && sessionStorage.getItem('static_user');
+      if (!hasStaticUser) {
+        setSession(session);
+        setUser(session?.user ?? null);
+      }
       setLoading(false);
     });
 
