@@ -130,7 +130,7 @@ export default function LoginPage() {
 
     if (userProfile) {
       targetEmail = userProfile.email;
-      storedPassword = userProfile.password; // Note: We should use password_hash in production
+      storedPassword = userProfile.password_hash; // Updated to match schema
       storedRole = userProfile.role;
       storedUsername = userProfile.username;
     }
@@ -140,18 +140,23 @@ export default function LoginPage() {
       if (storedPassword && storedPassword === password) {
         // Authenticate via Supabase if possible, but prioritize the match
         try {
-          await supabase.auth.signInWithPassword({
+          const { data: authData } = await supabase.auth.signInWithPassword({
             email: targetEmail,
             password: password,
           });
+          
+          if (!authData.user) throw new Error("Supabase auth failed");
         } catch (e) {
           console.warn("[Identity Protocol] Supabase auth failed, using static fallback:", e);
           // Establish a Static Session for the provider to pick up
           const staticUser = {
-            uid: userProfile?.id || targetEmail.replace(/[^a-zA-Z0-9]/g, '_'), // Use real UID if available
+            id: userProfile?.id || targetEmail.replace(/[^a-zA-Z0-9]/g, '_'),
             email: targetEmail,
-            displayName: storedUsername || identifierInput,
-            role: storedRole, // Ensure role is preserved for dashboard logic
+            user_metadata: {
+              username: storedUsername || identifierInput,
+              role: storedRole
+            },
+            role: storedRole,
             isStatic: true
           };
           sessionStorage.setItem('static_user', JSON.stringify(staticUser));

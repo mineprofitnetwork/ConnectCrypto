@@ -19,10 +19,22 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Check for static user in session storage
+    const staticUserJson = typeof window !== 'undefined' ? sessionStorage.getItem('static_user') : null;
+    if (staticUserJson) {
+      try {
+        const staticUser = JSON.parse(staticUserJson);
+        setUser(staticUser);
+        setLoading(false);
+      } catch (_e) {}
+    }
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+      if (session) {
+        setSession(session);
+        setUser(session.user);
+      }
       setLoading(false);
     });
 
