@@ -133,9 +133,13 @@ export default function LoginPage() {
       storedPassword = userProfile.password_hash; // Updated to match schema
       storedRole = userProfile.role;
       storedUsername = userProfile.username;
-      console.log("[Identity Protocol] User found:", storedUsername, "Role:", storedRole);
-    } else {
-      console.log("[Identity Protocol] No user profile found for:", identifierInput);
+      console.log("[Identity Protocol] Profile Data:", {
+        email: targetEmail,
+        role: storedRole,
+        username: storedUsername,
+        hasPassword: !!storedPassword,
+        passwordValue: storedPassword // TEMPORARY DEBUG
+      });
     }
 
     try {
