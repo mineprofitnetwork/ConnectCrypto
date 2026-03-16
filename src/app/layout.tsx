@@ -48,7 +48,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'en_IN',
-    url: 'https://connectcrypto.com',
+    url: process.env.NEXT_PUBLIC_SITE_URL || 'https://connectcrypto.com',
     siteName: 'ConnectCrypto',
     title: 'ConnectCrypto | Best P2P Platform for USDT in India',
     description: 'Join the best P2P platform to buy & sell crypto with high commissions. Remote agent WFH jobs available now.',
