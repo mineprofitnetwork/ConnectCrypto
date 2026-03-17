@@ -145,9 +145,39 @@ ALTER TABLE public.withdrawals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fiat_payment_methods ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.global_settings ENABLE ROW LEVEL SECURITY;
 
--- Allow users to read their own profile
+-- NON-RECURSIVE PROFILE POLICIES
+-- To avoid "infinite recursion" (42P17), never query 'public.profiles' inside a policy for 'public.profiles'
+-- unless using a SECURITY DEFINER function.
+
+-- 1. Users can always view their own profile
 DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
-CREATE POLICY "Users can view own profile" ON public.profiles FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users can view own profile" ON public.profiles 
+FOR SELECT USING (auth.uid() = id);
+
+-- 2. Traders can view profiles assigned to them
+DROP POLICY IF EXISTS "Traders can view assigned profiles" ON public.profiles;
+CREATE POLICY "Traders can view assigned profiles" ON public.profiles 
+FOR SELECT USING (auth.uid() = trader_id);
+
+-- 3. Agents can view profiles assigned to them
+DROP POLICY IF EXISTS "Agents can view assigned profiles" ON public.profiles;
+CREATE POLICY "Agents can view assigned profiles" ON public.profiles 
+FOR SELECT USING (auth.uid() = agent_id);
+
+-- 4. Admin Policy (Using a non-recursive check)
+-- Note: In a production environment, it's better to use custom JWT claims for roles.
+-- For now, we allow the specific admin email or id if known, or use a security definer function.
+CREATE OR REPLACE FUNCTION public.is_admin() 
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles 
+    WHERE id = auth.uid() AND role = 'admin'
+  );
+$$ LANGUAGE sql SECURITY DEFINER;
+
+DROP POLICY IF EXISTS "Admins can view all profiles" ON public.profiles;
+CREATE POLICY "Admins can view all profiles" ON public.profiles 
+FOR SELECT USING (public.is_admin());
 
 -- Allow public reading of offers
 DROP POLICY IF EXISTS "Public can view offers" ON public.trader_buy_offers;
