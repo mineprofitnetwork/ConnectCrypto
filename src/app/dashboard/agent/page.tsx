@@ -295,17 +295,13 @@ export default function AgentDashboard() {
 
   return (
     <DashboardLayout
-      sidebar={
-        <AppSidebar
-          navItems={navItems}
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          selectedLogo={brandingSettings?.selectedLogo}
-          onLogout={() => setIsSignOutOpen(true)}
-          title="Agent Portal"
-          subtitle={`Hello, @${userData?.username}`}
-        />
-      }
+      navItems={navItems}
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+      selectedLogo={brandingSettings?.selectedLogo || "original"}
+      onLogout={() => setIsSignOutOpen(true)}
+      title="Agent Portal"
+      subtitle={`Hello, @${userData?.username}`}
     >
       <div className="space-y-10 pb-40">
       {activeTab === "referrals" ? (

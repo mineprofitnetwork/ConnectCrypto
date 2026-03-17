@@ -511,17 +511,13 @@ export default function ClientDashboard() {
 
   return (
     <DashboardLayout
-      sidebar={
-        <AppSidebar
-          navItems={navItems}
-          activeTab={activeTab}
-          setActiveTab={(id) => { setActiveTab(id); setStep(1); }}
-          selectedLogo={brandingSettings?.selectedLogo}
-          onLogout={() => setIsSignOutDialogOpen(true)}
-          title="ConnectCrypto"
-          subtitle="Institutional"
-        />
-      }
+      navItems={navItems}
+      activeTab={activeTab}
+      setActiveTab={(id) => { setActiveTab(id); setStep(1); }}
+      selectedLogo={brandingSettings?.selectedLogo || "original"}
+      onLogout={() => setIsSignOutDialogOpen(true)}
+      title="ConnectCrypto"
+      subtitle="Institutional"
     >
       <LiveActivityBanner />
       
