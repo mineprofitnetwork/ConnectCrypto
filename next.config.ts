@@ -1,7 +1,6 @@
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
-  output: 'export',
   trailingSlash: true,
   typescript: {
     ignoreBuildErrors: true,
@@ -41,3 +40,4 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+

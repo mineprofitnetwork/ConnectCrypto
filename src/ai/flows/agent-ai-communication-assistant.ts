@@ -4,7 +4,11 @@
 
 import {z} from 'zod';
 
-const AgentAICommunicationAssistantInputSchema = z.object({
+export type AgentAICommunicationAssistantInput = z.infer<typeof AgentAICommunicationAssistantInputSchema>;
+
+export type AgentAICommunicationAssistantOutput = z.infer<typeof AgentAICommunicationAssistantOutputSchema>;
+
+export const AgentAICommunicationAssistantInputSchema = z.object({
   messageType: z
     .enum(['recruitment', 'onboarding', 'support'])
     .describe('The type of message to generate: recruitment of new traders, onboarding of new referrals, or support for existing referrals.'),
@@ -19,13 +23,11 @@ const AgentAICommunicationAssistantInputSchema = z.object({
   }).optional().describe('Information about the target client/referral.'),
   additionalContext: z.string().optional().describe('Any additional context or specific instructions for the AI.'),
 });
-export type AgentAICommunicationAssistantInput = z.infer<typeof AgentAICommunicationAssistantInputSchema>;
 
-const AgentAICommunicationAssistantOutputSchema = z.object({
+export const AgentAICommunicationAssistantOutputSchema = z.object({
   generatedMessage: z.string().describe('The AI-generated communication message.'),
   messagePurpose: z.enum(['recruitment', 'onboarding', 'support']).describe('The purpose of the generated message.'),
 });
-export type AgentAICommunicationAssistantOutput = z.infer<typeof AgentAICommunicationAssistantOutputSchema>;
 
 export async function agentAICommunicationAssistant(
   input: AgentAICommunicationAssistantInput

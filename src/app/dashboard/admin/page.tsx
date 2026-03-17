@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { 
@@ -28,16 +28,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { 
   Users, 
-  LogOut, 
   Loader2,
   Search,
   UserPlus,
   Key,
   Trash2,
   CheckCircle,
-  ShieldCheck,
-  Menu,
-  X,
   CreditCard,
   LayoutDashboard,
   History,
@@ -70,11 +66,11 @@ import { useSupabaseQuery, useSupabaseDoc } from "@/hooks/use-supabase";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
-import { ISTTimer } from "@/components/ui/ist-timer";
 import Image from "next/image";
 import { USDTGoldLogo } from "@/components/logos/USDTGoldLogo";
 import { USDTOriginalLogo } from "@/components/logos/USDTOriginalLogo";
-import { User, TradeTransaction, WithdrawalRequest, TraderOffer, Profile } from "@/types";
+import { TradeTransaction, WithdrawalRequest, TraderOffer, Profile, GlobalSettings } from "@/types";
+import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -82,7 +78,6 @@ export default function AdminDashboard() {
   const { user, loading: isUserLoading, signOut } = useSupabaseAuth();
   
   const [activeTab, setActiveTab] = useState("ledger");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [newTraderEmail, setNewTraderEmail] = useState("");
   const [newTraderPass, setNewTraderPass] = useState("admin123");
   const [newTraderUsername, setNewTraderUsername] = useState("");
@@ -107,12 +102,6 @@ export default function AdminDashboard() {
   const [offerPrice, setOfferPrice] = useState("95.5");
   const [offerDisplayName, setOfferDisplayName] = useState("");
   const [offerDescription, setOfferDescription] = useState("");
-  const [offerWalletTrc20, setOfferWalletTrc20] = useState("");
-  const [offerWalletBep20, setOfferWalletBep20] = useState("");
-  const [offerWalletErc20, setOfferWalletErc20] = useState("");
-  const [offerQrTrc20, setOfferQrTrc20] = useState("");
-  const [offerQrBep20, setOfferQrBep20] = useState("");
-  const [offerQrErc20, setOfferQrErc20] = useState("");
   const [offerIconCid, setOfferIconCid] = useState("");
   const [selectedTraderId, setSelectedTraderId] = useState("");
 
@@ -128,12 +117,13 @@ export default function AdminDashboard() {
   const [isGatewayUpdating, setIsGatewayUpdating] = useState(false);
 
   // Branding State
-  const [selectedLogo, setSelectedLogo] = useState<"gold" | "original">("original");
+  const [selectedLogo, setSelectedLogo] = useState<"gold" | "original" | "custom">("original");
+  const [customLogoCid, setCustomLogoCid] = useState("");
   const [isBrandingUpdating, setIsBrandingUpdating] = useState(false);
 
   const { data: userData, loading: isUserDataLoading } = useSupabaseDoc<Profile>("profiles", user?.id);
 
-  const { data: globalSettings } = useSupabaseDoc<any>("global_settings", "default");
+  const { data: globalSettings } = useSupabaseDoc<GlobalSettings>("global_settings", "default");
 
   useEffect(() => {
     if (globalSettings) {
@@ -151,6 +141,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (globalSettings?.branding) {
       setSelectedLogo(globalSettings.branding.selectedLogo || "original");
+      setCustomLogoCid(globalSettings.branding.customLogoCid || "");
     }
   }, [globalSettings]);
 
@@ -197,18 +188,18 @@ export default function AdminDashboard() {
 
     // Calculate USDT Received from successful trades
     allTransactions?.forEach((t: TradeTransaction) => {
-      if (t.status === "Success" && t.traderId && metrics[t.traderId]) {
-        metrics[t.traderId].usdtReceived += (t.cryptoAmount || 0);
+      if (t.status === "Success" && t.trader_id && metrics[t.trader_id]) {
+        metrics[t.trader_id].usdtReceived += (t.crypto_amount || 0);
       }
     });
 
     // Calculate Money Paid and Money to Pay from withdrawals
     allWithdrawals?.forEach((w: WithdrawalRequest) => {
-      if (w.traderId && metrics[w.traderId]) {
+      if (w.trader_id && metrics[w.trader_id]) {
         if (w.status === "Success") {
-          metrics[w.traderId].moneyPaid += (w.amount || 0);
+          metrics[w.trader_id].moneyPaid += (w.amount || 0);
         } else if (w.status === "Pending") {
-          metrics[w.traderId].moneyToPay += (w.amount || 0);
+          metrics[w.trader_id].moneyToPay += (w.amount || 0);
         }
       }
     });
@@ -333,27 +324,31 @@ export default function AdminDashboard() {
       setNewTraderPass("admin123");
       setIsProvisionOpen(false);
       
-    } catch (e: any) { 
+    } catch (e: unknown) { 
       console.error(e);
-      toast({ variant: "destructive", title: "Activation Failed", description: e.message });
+      toast({ variant: "destructive", title: "Activation Failed", description: (e as Error).message });
     } finally {
       setIsProvisioning(false); 
     }
   };
 
-  const handleUpdateBranding = async (logo: "gold" | "original") => {
+  const handleUpdateBranding = async (logo: "gold" | "original" | "custom", cid?: string) => {
     setIsBrandingUpdating(true);
     try {
       const { error } = await supabase.from("global_settings").upsert({
         id: "default",
-        branding: { selectedLogo: logo },
+        branding: { 
+          selectedLogo: logo,
+          customLogoCid: cid || customLogoCid
+        },
         updated_at: new Date().toISOString()
       });
       if (error) throw error;
       setSelectedLogo(logo);
+      if (cid) setCustomLogoCid(cid);
       toast({ title: "Branding Updated", description: "Global logo protocol updated." });
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "Update Failed", description: e.message });
+    } catch (e: unknown) {
+      toast({ variant: "destructive", title: "Update Failed", description: (e as Error).message });
     } finally {
       setIsBrandingUpdating(false);
     }
@@ -363,7 +358,7 @@ export default function AdminDashboard() {
     setEditingUser(u);
     setEditUsername(u.username || "");
     setEditEmail(u.email || "");
-    setEditPass((u as any).password_hash || "");
+    setEditPass((u as Profile).password_hash || "");
     setIsEditOpen(true);
   };
 
@@ -425,15 +420,15 @@ export default function AdminDashboard() {
       if (tradeError) throw tradeError;
 
       // 2. Update Client Balance (Simulated increment)
-      const { data: clientProfile } = await supabase.from("profiles").select("balance").eq("id", trade.clientId).single();
-      const newClientBalance = (clientProfile?.balance || 0) + trade.fiatAmount;
-      await supabase.from("profiles").update({ balance: newClientBalance }).eq("id", trade.clientId);
+      const { data: clientProfile } = await supabase.from("profiles").select("balance").eq("id", trade.client_id).single();
+      const newClientBalance = (clientProfile?.balance || 0) + trade.fiat_amount;
+      await supabase.from("profiles").update({ balance: newClientBalance }).eq("id", trade.client_id);
 
       // 3. Update Trader Balance
-      if (trade.traderId) {
-        const { data: traderProfile } = await supabase.from("profiles").select("balance").eq("id", trade.traderId).single();
-        const newTraderBalance = (traderProfile?.balance || 0) + trade.fiatAmount;
-        await supabase.from("profiles").update({ balance: newTraderBalance }).eq("id", trade.traderId);
+      if (trade.trader_id) {
+        const { data: traderProfile } = await supabase.from("profiles").select("balance").eq("id", trade.trader_id).single();
+        const newTraderBalance = (traderProfile?.balance || 0) + trade.fiat_amount;
+        await supabase.from("profiles").update({ balance: newTraderBalance }).eq("id", trade.trader_id);
       }
 
       toast({ title: "Trade Approved", description: "Funds released to client wallet by Admin." });
@@ -461,7 +456,7 @@ export default function AdminDashboard() {
   const handleWithdrawalAction = async (withdrawal: WithdrawalRequest, newStatus: string) => {
     try {
       if (newStatus === "Success") {
-        const { data: userProfile } = await supabase.from("profiles").select("balance").eq("id", withdrawal.userId).single();
+        const { data: userProfile } = await supabase.from("profiles").select("balance").eq("id", withdrawal.user_id).single();
         const currentBalance = userProfile?.balance || 0;
         
         if (currentBalance < withdrawal.amount) {
@@ -471,7 +466,7 @@ export default function AdminDashboard() {
         const { error: withdrawalError } = await supabase.from("withdrawals").update({ status: "Success", processed_at: new Date().toISOString() }).eq("id", withdrawal.id);
         if (withdrawalError) throw withdrawalError;
 
-        await supabase.from("profiles").update({ balance: currentBalance - withdrawal.amount }).eq("id", withdrawal.userId);
+        await supabase.from("profiles").update({ balance: currentBalance - withdrawal.amount }).eq("id", withdrawal.user_id);
 
         toast({ title: "Withdrawal Marked as Paid", description: "Balance deducted and status updated by Admin." });
       } else if (newStatus === "Delete") {
@@ -493,12 +488,6 @@ export default function AdminDashboard() {
     setOfferFiat("INR");
     setOfferPrice("95.5");
     setOfferDisplayName("");
-    setOfferWalletTrc20("");
-    setOfferWalletBep20("");
-    setOfferWalletErc20("");
-    setOfferQrTrc20("");
-    setOfferQrBep20("");
-    setOfferQrErc20("");
     setOfferIconCid("");
     setOfferDescription("");
     setSelectedTraderId("");
@@ -520,7 +509,8 @@ export default function AdminDashboard() {
       return;
     }
     
-    const trader = traders.find((t: User) => t.id === selectedTraderId);
+    const targetTraderId = selectedTraderId || (editingOfferId ? allOffers?.find(o => o.id === editingOfferId)?.trader_id : "");
+    const trader = rawUsers?.find((t: Profile) => t.id === targetTraderId);
     
     const offerData = {
       crypto_asset_id: offerCrypto.toUpperCase(),
@@ -529,14 +519,14 @@ export default function AdminDashboard() {
       fixed_price_per_crypto: parseFloat(offerPrice),
       description: offerDescription,
       icon_cid: offerIconCid.trim(),
-      wallet_address_trc20: offerWalletTrc20.trim(),
-      wallet_address_bep20: offerWalletBep20.trim(),
-      wallet_address_erc20: offerWalletErc20.trim(),
-      wallet_qr_trc20: offerQrTrc20.trim(),
-      wallet_qr_bep20: offerQrBep20.trim(),
-      wallet_qr_erc20: offerQrErc20.trim(),
+      wallet_address_trc20: trader?.wallet_address_trc20?.trim() || "",
+      wallet_address_bep20: trader?.wallet_address_bep20?.trim() || "",
+      wallet_address_erc20: trader?.wallet_address_erc20?.trim() || "",
+      wallet_qr_trc20: trader?.wallet_qr_trc20?.trim() || "",
+      wallet_qr_bep20: trader?.wallet_qr_bep20?.trim() || "",
+      wallet_qr_erc20: trader?.wallet_qr_erc20?.trim() || "",
       status: "Active",
-      trader_id: selectedTraderId,
+      trader_id: targetTraderId,
       trader_username: trader?.username || "Verified Node",
       display_name: offerDisplayName.trim() || trader?.username || "Verified Node"
     };
@@ -556,41 +546,39 @@ export default function AdminDashboard() {
 
   const handleEditOffer = (off: TraderOffer) => {
     setEditingOfferId(off.id);
-    setOfferCrypto(off.cryptoAssetId);
+    setOfferCrypto(off.crypto_asset_id);
     setOfferNetwork(off.network);
-    setOfferFiat(off.fiatCurrency);
-    setOfferPrice(off.fixedPricePerCrypto.toString());
-    setOfferDisplayName(off.displayName || "");
+    setOfferFiat(off.fiat_currency);
+    setOfferPrice(off.fixed_price_per_crypto.toString());
+    setOfferDisplayName(off.display_name || "");
     setOfferDescription(off.description || "");
-    setOfferIconCid(off.iconCid || "");
-    setOfferWalletTrc20(off.walletAddressTrc20 || "");
-    setOfferWalletBep20(off.walletAddressBep20 || "");
-    setOfferWalletErc20(off.walletAddressErc20 || "");
-    setOfferQrTrc20(off.walletQrTrc20 || "");
-    setOfferQrBep20(off.walletQrBep20 || "");
-    setOfferQrErc20(off.walletQrErc20 || "");
-    setSelectedTraderId(off.traderId);
+    setOfferIconCid(off.icon_cid || "");
+    setSelectedTraderId(off.trader_id);
     setIsAddOfferOpen(true);
   };
 
   const handleDuplicateOffer = (off: TraderOffer) => {
     setEditingOfferId(null);
-    setOfferCrypto(off.cryptoAssetId);
+    setOfferCrypto(off.crypto_asset_id);
     setOfferNetwork(off.network);
-    setOfferFiat(off.fiatCurrency);
-    setOfferPrice(off.fixedPricePerCrypto.toString());
-    setOfferDisplayName(off.displayName || "");
+    setOfferFiat(off.fiat_currency);
+    setOfferPrice(off.fixed_price_per_crypto.toString());
+    setOfferDisplayName(off.display_name || "");
     setOfferDescription(off.description || "");
-    setOfferIconCid(off.iconCid || "");
-    setOfferWalletTrc20(off.walletAddressTrc20 || "");
-    setOfferWalletBep20(off.walletAddressBep20 || "");
-    setOfferWalletErc20(off.walletAddressErc20 || "");
-    setOfferQrTrc20(off.walletQrTrc20 || "");
-    setOfferQrBep20(off.walletQrBep20 || "");
-    setOfferQrErc20(off.walletQrErc20 || "");
-    setSelectedTraderId(off.traderId);
+    setOfferIconCid(off.icon_cid || "");
+    setSelectedTraderId(off.trader_id);
     setIsAddOfferOpen(true);
     toast({ title: "Draft Duplicated" });
+  };
+
+  const handleDeleteOffer = async (id: string) => {
+    try {
+      const { error } = await supabase.from("trader_buy_offers").delete().eq("id", id);
+      if (error) throw error;
+      toast({ title: "Position Purged", description: "Record removed from the market." });
+    } catch (e: unknown) {
+      toast({ variant: "destructive", title: "Purge Failed", description: (e as Error).message });
+    }
   };
 
   const IPFSPreview = ({ cid, label, className }: { cid: string; label: string; className?: string }) => {
@@ -625,211 +613,160 @@ export default function AdminDashboard() {
 
   return (
     <TooltipProvider>
-    <div className="min-h-screen bg-transparent text-white flex flex-col font-body antialiased selection:bg-primary/30">
-      <header className="border-b border-white/[0.05] bg-black/40 backdrop-blur-2xl px-6 md:px-10 py-6 flex items-center justify-between shrink-0 z-[100]">
-        <div className="flex items-center gap-4 group cursor-pointer" onClick={() => setActiveTab("ledger")}>
-          <div className="transition-transform group-hover:scale-110 duration-500">
-            {selectedLogo === 'gold' ? (
-              <USDTGoldLogo className="w-12 h-12" />
-            ) : (
-              <USDTOriginalLogo className="w-12 h-12" />
-            )}
-          </div>
-          <div className="flex flex-col">
-            <span className="font-headline font-black text-lg md:text-2xl uppercase tracking-tighter leading-none">ConnectRoot</span>
-            <span className="text-[9px] text-primary font-bold uppercase tracking-[0.3em] leading-none mt-1.5">Authority Portal</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-6">
-          <div className="hidden lg:block">
-            <ISTTimer />
-          </div>
-          <div className="flex items-center gap-2 md:gap-3">
-            <Button variant="outline" size="icon" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="rounded-xl h-12 w-12 border-white/10 bg-white/5 hover:bg-white/10 transition-all md:hidden">
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </Button>
-            <Button variant="outline" size="icon" onClick={() => setIsSignOutDialogOpen(true)} className="rounded-full h-12 w-12 border-white/10 bg-white/5 hover:bg-white/10 transition-all text-muted-foreground hover:text-red-500 hidden md:flex">
-              <LogOut className="w-5 h-5" />
-            </Button>
-          </div>
-        </div>
-      </header>
+      <DashboardLayout
+        navItems={navItems}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        selectedLogo={selectedLogo}
+        customLogoCid={customLogoCid}
+        onLogout={() => setIsSignOutDialogOpen(true)}
+        title="ConnectRoot"
+        subtitle="Authority Portal"
+      >
+        {/* Sign Out Confirmation Dialog */}
+        <AlertDialog open={isSignOutDialogOpen} onOpenChange={setIsSignOutDialogOpen}>
+          <AlertDialogContent className="glass-card border-white/10 rounded-[2.5rem] max-w-sm p-8">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-2xl font-headline font-black uppercase tracking-tight text-white">Authority Shutdown</AlertDialogTitle>
+              <AlertDialogDescription className="text-xs font-bold uppercase tracking-widest opacity-60 leading-relaxed mt-2">
+                Confirm termination of Root Authority session? All administrative locks will remain active.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="gap-3 mt-8">
+              <AlertDialogCancel className="rounded-2xl h-14 flex-1 text-[10px] font-bold uppercase tracking-widest border-white/10 bg-white/5 hover:bg-white/10 transition-all">Stay Logged In</AlertDialogCancel>
+              <AlertDialogAction onClick={handleLogout} className="bg-red-500 hover:bg-red-600 rounded-2xl h-14 flex-1 text-[10px] font-bold uppercase tracking-widest text-white glow-primary transition-all">Commit Logout</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-      {mobileMenuOpen && (
-        <div className="fixed inset-0 bg-black/95 z-[200] p-10 flex flex-col items-center justify-center space-y-8 animate-in-scale">
-           <div className="mb-6">
-             <ISTTimer />
-           </div>
-           <nav className="flex flex-col items-center space-y-4">
-             {navItems.map(item => (
-               <button 
-                 key={item.id} 
-                 onClick={() => { setActiveTab(item.id); setMobileMenuOpen(false); }} 
-                 className={`text-2xl font-headline font-black uppercase tracking-[0.1em] flex items-center gap-4 transition-all hover:scale-105 ${activeTab === item.id ? 'text-primary' : 'text-white/60 hover:text-white'}`}
-               >
-                 <item.icon className={`w-6 h-6 ${activeTab === item.id ? 'text-primary' : 'text-white/40'}`} /> 
-                 {item.label}
-               </button>
-             ))}
-           </nav>
-           <div className="pt-10 border-t border-white/10 w-full max-w-xs flex flex-col items-center">
-             <Button variant="ghost" onClick={() => { setIsSignOutDialogOpen(true); setMobileMenuOpen(false); }} className="text-muted-foreground uppercase font-bold tracking-[0.2em] hover:text-red-500 transition-colors h-14 text-xs">Sign Out</Button>
-           </div>
-           <Button variant="outline" size="icon" onClick={() => setMobileMenuOpen(false)} className="absolute top-8 right-8 rounded-full h-12 w-12 border-white/10 bg-white/5"><X className="w-6 h-6" /></Button>
-        </div>
-      )}
-
-      {/* Sign Out Confirmation Dialog */}
-      <AlertDialog open={isSignOutDialogOpen} onOpenChange={setIsSignOutDialogOpen}>
-        <AlertDialogContent className="glass-card border-white/10 rounded-[2.5rem] max-w-sm p-8">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-2xl font-headline font-black uppercase tracking-tight text-white">Authority Shutdown</AlertDialogTitle>
-            <AlertDialogDescription className="text-xs font-bold uppercase tracking-widest opacity-60 leading-relaxed mt-2">
-              Confirm termination of Root Authority session? All administrative locks will remain active.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="gap-3 mt-8">
-            <AlertDialogCancel className="rounded-2xl h-14 flex-1 text-[10px] font-bold uppercase tracking-widest border-white/10 bg-white/5 hover:bg-white/10 transition-all">Stay Logged In</AlertDialogCancel>
-            <AlertDialogAction onClick={handleLogout} className="bg-red-500 hover:bg-red-600 rounded-2xl h-14 flex-1 text-[10px] font-bold uppercase tracking-widest text-white glow-primary transition-all">Commit Logout</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <main className="flex-1 app-scroll-area">
-        <div className="p-6 md:p-10 lg:p-12 space-y-10 pb-40">
-          <div className="space-y-3">
-            <div className="inline-flex items-center px-3 py-1 rounded-full bg-primary/10 border border-primary/20">
-              <span className="text-[9px] font-black uppercase tracking-[0.3em] text-primary">Network Protected</span>
+        <div className="space-y-12">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
+            <div className="space-y-4">
+              <div className="inline-flex items-center px-3 py-1 rounded-full bg-primary/10 border border-primary/20">
+                <span className="text-[9px] font-black uppercase tracking-[0.3em] text-primary">Network Protected</span>
+              </div>
+              <div className="space-y-2">
+                <h1 className="text-4xl md:text-6xl font-headline font-black uppercase leading-none tracking-tighter italic">Market Integrity</h1>
+                <p className="text-muted-foreground text-[10px] md:text-xs uppercase tracking-[0.3em] font-black opacity-60 max-w-xl">
+                  Global Participant and Liquidity Hub Management. Oversee network health, verify identities, and manage institutional liquidity positions.
+                </p>
+              </div>
             </div>
-            <div className="space-y-1">
-              <h1 className="text-3xl md:text-5xl font-headline font-black uppercase leading-none tracking-tighter italic">Market Integrity</h1>
-              <p className="text-muted-foreground text-[10px] md:text-xs uppercase tracking-[0.3em] font-black opacity-60">
-                Global Participant and Liquidity Hub Management.
-              </p>
+            
+            <div className="flex flex-wrap items-center gap-4 shrink-0">
+              <Button onClick={() => setIsProvisionOpen(true)} className="bg-primary h-14 px-8 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] glow-primary text-white hover:scale-[1.02] transition-transform">
+                <UserPlus className="w-5 h-5 mr-3" /> Add Trader Node
+              </Button>
+              {activeTab === "offers" && (
+                <div className="flex gap-4">
+                  <Button onClick={() => setIsGatewayOpen(true)} className={cn("h-14 px-8 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all", isReroutingEnabled ? 'bg-amber-500/20 border border-amber-500/50 text-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.1)]' : 'bg-white/5 border border-white/10 text-white hover:bg-white/10')}>
+                    <Globe className={cn("w-5 h-5 mr-3", isReroutingEnabled ? 'animate-pulse' : '')} /> Global Gateway: {isReroutingEnabled ? 'Active' : 'Standby'}
+                  </Button>
+                  <Button onClick={() => setIsAddOfferOpen(true)} className="bg-white/5 border border-white/10 h-14 px-8 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-white hover:bg-white/10 transition-all">
+                    <Plus className="w-5 h-5 mr-3" /> New Position
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-4 shrink-0 w-full lg:w-auto">
-            <Button onClick={() => setIsProvisionOpen(true)} className="bg-primary h-14 px-8 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] glow-primary text-white hover:scale-[1.02] transition-transform flex-1 md:flex-none">
-              <UserPlus className="w-5 h-5 mr-2" /> Add Trader
-            </Button>
-            {activeTab === "offers" && (
-              <div className="flex flex-wrap gap-4 w-full md:w-auto">
-                <Button onClick={() => setIsGatewayOpen(true)} className={`h-14 px-8 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex-1 md:flex-none ${isReroutingEnabled ? 'bg-amber-500/20 border border-amber-500/50 text-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.1)]' : 'bg-white/5 border border-white/10 text-white hover:bg-white/10'}`}>
-                  <Globe className={`w-5 h-5 mr-2 ${isReroutingEnabled ? 'animate-pulse' : ''}`} /> Global Gateway: {isReroutingEnabled ? 'Active' : 'Standby'}
-                </Button>
-                <Button onClick={() => setIsAddOfferOpen(true)} className="bg-white/5 border border-white/10 h-14 px-8 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-white hover:bg-white/10 transition-all flex-1 md:flex-none">
-                  <Plus className="w-5 h-5 mr-2" /> New Position
-                </Button>
-              </div>)}
-          </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-10">
-          <TabsList className="bg-white/5 border border-white/10 p-1.5 rounded-2xl h-auto flex w-full md:w-max overflow-x-auto no-scrollbar justify-start md:justify-center mx-auto">
-            {navItems.map(item => (
-              <TabsTrigger key={item.id} value={item.id} className="rounded-xl flex-shrink-0 px-8 md:px-10 py-4 font-black text-[10px] uppercase tracking-[0.2em] data-[state=active]:bg-primary data-[state=active]:text-white transition-all">
-                <item.icon className="w-4 h-4 mr-2.5" /> {item.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-
-          <TabsContent value="ledger">
-            <Card className="glass-card border-none rounded-[3rem] overflow-hidden animate-in-scale">
-              <CardHeader className="p-8 md:p-10 border-b border-white/[0.05] flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center border border-primary/20 shrink-0">
-                    <Users className="w-6 h-6 text-primary" />
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-10">
+            {/* The sidebar handles tab switching, but we keep the Tabs component for content organization */}
+            <TabsContent value="ledger" className="mt-0 outline-none">
+              <Card className="glass-card border-none rounded-[3rem] overflow-hidden animate-in-scale">
+                <CardHeader className="p-8 md:p-12 border-b border-white/[0.05] flex flex-col md:flex-row md:items-center justify-between gap-8">
+                  <div className="flex items-center gap-6">
+                    <div className="w-16 h-16 bg-primary/10 rounded-[2rem] flex items-center justify-center border border-primary/20 shrink-0">
+                      <Users className="w-8 h-8 text-primary" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-headline font-black uppercase tracking-tight">Participant Ledger</h2>
+                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-[0.2em] opacity-60 mt-1">Verified Network Entities and Node Status</p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-xl font-headline font-black uppercase tracking-tight">Participant Ledger</h2>
-                    <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest opacity-60 mt-0.5">Verified Network Entities</p>
+                  <div className="relative w-full md:w-[400px]">
+                    <Search className="w-4 h-4 absolute left-5 top-1/2 -translate-y-1/2 text-muted-foreground opacity-40" />
+                    <Input 
+                      placeholder="SEARCH IDENTITIES..." 
+                      className="pl-14 bg-white/5 border-white/10 rounded-2xl h-16 text-[11px] font-bold tracking-[0.2em] focus:ring-primary/30 uppercase" 
+                      value={searchQuery} 
+                      onChange={(e) => setSearchQuery(e.target.value)} 
+                    />
                   </div>
-                </div>
-                <div className="relative w-full md:w-96">
-                  <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground opacity-50" />
-                  <Input 
-                    placeholder="Search records..." 
-                    className="pl-12 bg-white/5 border-white/10 rounded-2xl h-14 text-[11px] font-bold tracking-widest focus:ring-primary/30" 
-                    value={searchQuery} 
-                    onChange={(e) => setSearchQuery(e.target.value)} 
-                  />
-                </div>
-              </CardHeader>
-              <CardContent className="p-0 overflow-x-auto">
-                <Table>
-                        <TableHeader>
-                          <TableRow className="border-white/[0.05] bg-white/[0.02] hover:bg-transparent h-16">
-                            <TableHead className="px-10 text-hierarchy-label">Identity</TableHead>
-                            <TableHead className="text-hierarchy-label">Network Role</TableHead>
-                            <TableHead className="text-hierarchy-label">Balance (INR)</TableHead>
-                            <TableHead className="text-hierarchy-label">USDT Received</TableHead>
-                            <TableHead className="text-hierarchy-label">Money Paid</TableHead>
-                            <TableHead className="text-hierarchy-label">Money to Pay</TableHead>
-                            <TableHead className="text-hierarchy-label">Status</TableHead>
-                            <TableHead className="px-10 text-right text-hierarchy-label">Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
+                </CardHeader>
+                <CardContent className="p-0 overflow-x-auto no-scrollbar">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-white/[0.05] bg-white/[0.02] hover:bg-transparent h-20">
+                        <TableHead className="px-12 text-hierarchy-label">Identity</TableHead>
+                        <TableHead className="text-hierarchy-label">Network Role</TableHead>
+                        <TableHead className="text-hierarchy-label">Balance (INR)</TableHead>
+                        <TableHead className="text-hierarchy-label">USDT Received</TableHead>
+                        <TableHead className="text-hierarchy-label">Money Paid</TableHead>
+                        <TableHead className="text-hierarchy-label">Money to Pay</TableHead>
+                        <TableHead className="text-hierarchy-label">Status</TableHead>
+                        <TableHead className="px-12 text-right text-hierarchy-label">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
                     <TableBody>
                       {isUsersLoading ? (
-                        <TableRow><TableCell colSpan={5} className="h-60 text-center"><Loader2 className="w-10 h-10 animate-spin mx-auto text-primary" /></TableCell></TableRow>
+                        <TableRow><TableCell colSpan={8} className="h-80 text-center"><Loader2 className="w-12 h-12 animate-spin mx-auto text-primary/40" /></TableCell></TableRow>
                       ) : users?.length === 0 ? (
-                        <TableRow><TableCell colSpan={5} className="h-60 text-center opacity-20 uppercase font-black tracking-[0.3em] text-xs">No participants detected</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={8} className="h-80 text-center opacity-20 uppercase font-black tracking-[0.4em] text-sm">No participants detected</TableCell></TableRow>
                       ) : users?.filter(u => u.username?.toLowerCase().includes(searchQuery.toLowerCase()) || u.email?.toLowerCase().includes(searchQuery.toLowerCase())).map((u) => (
-                        <TableRow key={u.id} className="border-white/[0.05] hover:bg-white/[0.03] transition-all group h-20">
-                          <TableCell className="px-10">
-                            <div className="flex flex-col gap-0.5">
-                              <span className="font-black text-xs uppercase italic text-white group-hover:text-primary transition-colors">{u.username}</span>
-                              <span className="text-[10px] text-white/30 uppercase font-bold tracking-widest">{u.email}</span>
+                        <TableRow key={u.id} className="border-white/[0.05] hover:bg-white/[0.03] transition-all group h-24">
+                          <TableCell className="px-12">
+                            <div className="flex flex-col gap-1">
+                              <span className="font-black text-sm uppercase italic text-white group-hover:text-primary transition-colors tracking-tight">{u.username}</span>
+                              <span className="text-[10px] text-white/20 uppercase font-bold tracking-[0.2em] group-hover:text-white/40 transition-colors">{u.email}</span>
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline" className="py-1 px-4 rounded-full text-[9px] font-black uppercase border-white/10 text-white/40 bg-white/5">
+                            <Badge variant="outline" className="py-1.5 px-4 rounded-full text-[9px] font-black uppercase border-white/10 text-white/30 bg-white/5 group-hover:border-primary/20 transition-all">
                               {u.username === 'iamtrader' || u.role === 'trader' ? 'Trader Node' : u.username === 'iamadmin' ? 'Network Admin' : 'Client Participant'}
                             </Badge>
                           </TableCell>
-                          <TableCell className="font-black text-white text-sm italic group-hover:scale-105 transition-transform origin-left">
+                          <TableCell className="font-black text-white text-base italic group-hover:scale-105 transition-transform origin-left">
                              ₹{u.balance?.toLocaleString() || '0.00'}
                           </TableCell>
-                          <TableCell className="font-black text-white/60 text-xs italic">
+                          <TableCell className="font-black text-white/40 text-xs italic">
                             {(u.role === 'trader' || u.username === 'iamtrader') 
                               ? `${traderMetrics[u.id]?.usdtReceived.toLocaleString()} USDT`
                               : '--'}
                           </TableCell>
-                          <TableCell className="font-black text-green-500/60 text-xs italic">
+                          <TableCell className="font-black text-green-500/40 text-xs italic">
                             {(u.role === 'trader' || u.username === 'iamtrader') 
                               ? `₹${traderMetrics[u.id]?.moneyPaid.toLocaleString()}`
                               : '--'}
                           </TableCell>
-                          <TableCell className="font-black text-amber-500/60 text-xs italic">
+                          <TableCell className="font-black text-amber-500/40 text-xs italic">
                             {(u.role === 'trader' || u.username === 'iamtrader') 
                               ? `₹${traderMetrics[u.id]?.moneyToPay.toLocaleString()}`
                               : '--'}
                           </TableCell>
                           <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Badge className={`px-3 py-1 text-[10px] font-black uppercase rounded-full border-none ${u.isActive ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
-                                {u.isActive ? 'Verified' : 'Locked'}
-                              </Badge>
-                            </div>
+                            <Badge className={cn("px-4 py-1.5 text-[9px] font-black uppercase rounded-full border-none transition-all", u.isActive ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500')}>
+                              {u.isActive ? 'Verified' : 'Locked'}
+                            </Badge>
                           </TableCell>
-                          <TableCell className="px-10 text-right">
-                            <div className="flex items-center justify-end gap-2">
+                          <TableCell className="px-12 text-right">
+                            <div className="flex items-center justify-end gap-3">
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <Button variant="ghost" size="icon" onClick={() => openEditDialog(u)} className="h-10 w-10 rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/10 border border-white/5">
-                                    <Key className="w-4 h-4" />
+                                  <Button variant="ghost" size="icon" onClick={() => openEditDialog(u)} className="h-12 w-12 rounded-2xl text-muted-foreground hover:text-primary hover:bg-primary/10 border border-white/5 transition-all">
+                                    <Key className="w-5 h-5" />
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent className="bg-black/90 border-white/10 text-[9px] uppercase font-bold">Edit Identity</TooltipContent>
+                                <TooltipContent className="bg-black/95 border-white/10 text-[9px] uppercase font-bold tracking-widest p-3">Edit Identity</TooltipContent>
                               </Tooltip>
 
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <Button variant="ghost" size="icon" onClick={() => setUserToDelete(u)} className="h-10 w-10 rounded-xl text-muted-foreground hover:text-red-500 hover:bg-red-500/10 border border-white/5">
-                                    <Trash2 className="w-4 h-4" />
+                                  <Button variant="ghost" size="icon" onClick={() => setUserToDelete(u)} className="h-12 w-12 rounded-2xl text-muted-foreground hover:text-red-500 hover:bg-red-500/10 border border-white/5 transition-all">
+                                    <Trash2 className="w-5 h-5" />
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent className="bg-black/90 border-white/10 text-[9px] uppercase font-bold">Purge Identity</TooltipContent>
+                                <TooltipContent className="bg-black/95 border-white/10 text-[9px] uppercase font-bold tracking-widest p-3">Purge Identity</TooltipContent>
                               </Tooltip>
                             </div>
                           </TableCell>
@@ -838,366 +775,392 @@ export default function AdminDashboard() {
                     </TableBody>
                   </Table>
                 </CardContent>
-            </Card>
-          </TabsContent>
+              </Card>
+            </TabsContent>
 
-          <TabsContent value="transactions">
-            <Card className="glass-card border-none rounded-[3rem] overflow-hidden animate-in-scale">
-               <CardHeader className="p-8 md:p-10 border-b border-white/[0.05] flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center border border-primary/20 shrink-0">
-                      <History className="w-6 h-6 text-primary" />
+            <TabsContent value="transactions" className="mt-0 outline-none">
+              <Card className="glass-card border-none rounded-[3rem] overflow-hidden animate-in-scale">
+                <CardHeader className="p-8 md:p-12 border-b border-white/[0.05] flex flex-col md:flex-row md:items-center justify-between gap-8">
+                  <div className="flex items-center gap-6">
+                    <div className="w-16 h-16 bg-primary/10 rounded-[2rem] flex items-center justify-center border border-primary/20 shrink-0">
+                      <History className="w-8 h-8 text-primary" />
                     </div>
                     <div>
-                      <h2 className="text-xl font-headline font-black uppercase tracking-tight">Global Trade Ledger</h2>
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest opacity-60 mt-0.5">Network Liquidity Flow Tracking</p>
+                      <h2 className="text-2xl font-headline font-black uppercase tracking-tight">Global Trade Ledger</h2>
+                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-[0.2em] opacity-60 mt-1">Real-time Network Liquidity Tracking</p>
                     </div>
                   </div>
-                  <Badge variant="outline" className="text-[10px] py-1.5 px-4 font-bold uppercase border-white/10 text-muted-foreground rounded-full bg-white/5">Real-time Feed</Badge>
-               </CardHeader>
-               <CardContent className="p-0 overflow-x-auto">
-                 <Table>
-                   <TableHeader>
-                     <TableRow className="border-white/[0.05] bg-white/[0.02] hover:bg-transparent h-16">
-                       <TableHead className="px-10 text-hierarchy-label">Reference</TableHead>
-                       <TableHead className="text-hierarchy-label">Source / Node</TableHead>
-                       <TableHead className="text-hierarchy-label">Asset Volume</TableHead>
-                       <TableHead className="text-hierarchy-label">Fiat Value</TableHead>
-                       <TableHead className="text-hierarchy-label">Status</TableHead>
-                       <TableHead className="px-10 text-right text-hierarchy-label">Actions</TableHead>
-                       <TableHead className="text-right px-10 text-hierarchy-label">Timestamp</TableHead>
-                     </TableRow>
-                   </TableHeader>
-                   <TableBody>
-                     {isTransactionsLoading ? (
-                       <TableRow><TableCell colSpan={7} className="h-60 text-center"><Loader2 className="w-10 h-10 animate-spin mx-auto text-primary" /></TableCell></TableRow>
-                     ) : !allTransactions?.length ? (
-                       <TableRow><TableCell colSpan={7} className="h-60 text-center opacity-20 uppercase font-black tracking-[0.3em] text-xs italic">No network activity recorded</TableCell></TableRow>
-                     ) : allTransactions.map((t) => (
-                       <TableRow key={t.id} className="border-white/[0.05] hover:bg-white/[0.03] transition-all group h-20">
-                         <TableCell className="px-10 font-mono text-xs text-white/40 group-hover:text-white/90 transition-colors">
-                           <span className="px-2 py-1 rounded bg-white/5 border border-white/5">#{t.id.slice(-6).toUpperCase()}</span>
-                         </TableCell>
-                         <TableCell>
-                           <div className="flex flex-col gap-0.5">
-                             <span className="text-[11px] font-black text-white uppercase italic tracking-tight">{t.clientUsername}</span>
-                             <div className="flex items-center gap-1.5">
-                               <span className="text-[9px] text-primary font-bold uppercase tracking-widest">Node: {t.traderUsername || "Verified"}</span>
-                               {t.isRerouted && (
-                                 <span className="text-[6px] text-amber-500 font-black uppercase tracking-tighter bg-amber-500/10 px-1 rounded-sm border border-amber-500/20">Rerouted</span>
-                               )}
-                             </div>
-                           </div>
-                         </TableCell>
-                         <TableCell className="font-black text-white uppercase text-xs italic">{t.cryptoAmount} {t.cryptoAssetId}</TableCell>
-                         <TableCell className="font-black text-primary uppercase text-xs italic group-hover:scale-105 transition-transform origin-left">
-                           ₹{t.fiatAmount.toLocaleString()}
-                           {t.isBonusApplied && (
-                             <Badge className="ml-2 bg-primary/20 text-primary border-none text-[8px] font-black">+2%</Badge>
-                           )}
-                         </TableCell>
-                         <TableCell>
-                           <Badge className={`px-3 py-1 text-[10px] font-black uppercase rounded-full border-none ${
-                             t.status === "Success" ? "bg-green-500/10 text-green-500 shadow-[0_0_10px_rgba(34,197,94,0.1)]" : 
-                             t.status === "Paid" ? "bg-amber-500/10 text-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.1)]" : 
-                             t.status === "Hold" ? "bg-red-500/10 text-red-500 shadow-[0_0_10px_rgba(239,68,68,0.1)]" :
-                             t.status === "KYC Required" ? "bg-blue-500/10 text-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.1)]" :
-                             "bg-primary/10 text-primary shadow-[0_0_10px_rgba(139,92,246,0.1)]"
-                           }`}>{t.status}</Badge>
-                         </TableCell>
-                         <TableCell className="px-10 text-right">
-                            <div className="flex items-center justify-end gap-2">
+                  <Badge variant="outline" className="text-[10px] py-2 px-6 font-black uppercase border-white/10 text-muted-foreground rounded-full bg-white/5 tracking-[0.2em]">Active Feed</Badge>
+                </CardHeader>
+                <CardContent className="p-0 overflow-x-auto no-scrollbar">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-white/[0.05] bg-white/[0.02] hover:bg-transparent h-20">
+                        <TableHead className="px-12 text-hierarchy-label">Reference</TableHead>
+                        <TableHead className="text-hierarchy-label">Source / Node</TableHead>
+                        <TableHead className="text-hierarchy-label">Asset Volume</TableHead>
+                        <TableHead className="text-hierarchy-label">Fiat Value</TableHead>
+                        <TableHead className="text-hierarchy-label">Status</TableHead>
+                        <TableHead className="px-12 text-right text-hierarchy-label">Actions</TableHead>
+                        <TableHead className="text-right px-12 text-hierarchy-label">Timestamp</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {isTransactionsLoading ? (
+                        <TableRow><TableCell colSpan={7} className="h-80 text-center"><Loader2 className="w-12 h-12 animate-spin mx-auto text-primary/40" /></TableCell></TableRow>
+                      ) : !allTransactions?.length ? (
+                        <TableRow><TableCell colSpan={7} className="h-80 text-center opacity-20 uppercase font-black tracking-[0.4em] text-sm italic">No network activity recorded</TableCell></TableRow>
+                      ) : allTransactions.map((t) => (
+                        <TableRow key={t.id} className="border-white/[0.05] hover:bg-white/[0.03] transition-all group h-24">
+                          <TableCell className="px-12 font-mono text-xs text-white/20 group-hover:text-white/60 transition-colors">
+                            <span className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 tracking-wider">#{t.id.slice(-8).toUpperCase()}</span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-1">
+                              <span className="text-[12px] font-black text-white uppercase italic tracking-tight group-hover:text-primary transition-colors">{t.client_username}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[9px] text-white/20 font-bold uppercase tracking-widest group-hover:text-white/40 transition-colors">Node: {t.trader_username || "Verified"}</span>
+                                {t.is_rerouted && (
+                                  <span className="text-[7px] text-amber-500 font-black uppercase tracking-tighter bg-amber-500/10 px-2 py-0.5 rounded-sm border border-amber-500/20">Rerouted</span>
+                                )}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-black text-white uppercase text-sm italic">{t.crypto_amount} {t.crypto_asset_id}</TableCell>
+                          <TableCell className="font-black text-primary uppercase text-base italic group-hover:scale-110 transition-transform origin-left">
+                            ₹{t.fiat_amount.toLocaleString()}
+                            {t.is_bonus_applied && (
+                              <Badge className="ml-3 bg-primary/20 text-primary border-none text-[9px] font-black px-2 py-0.5">+2%</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={cn("px-4 py-1.5 text-[9px] font-black uppercase rounded-full border-none transition-all shadow-lg", 
+                              t.status === "Success" ? "bg-green-500/10 text-green-500 shadow-green-500/5" : 
+                              t.status === "Paid" ? "bg-amber-500/10 text-amber-500 shadow-amber-500/5" : 
+                              t.status === "Hold" ? "bg-red-500/10 text-red-500 shadow-red-500/5" :
+                              t.status === "KYC Required" ? "bg-blue-500/10 text-blue-500 shadow-blue-500/5" :
+                              "bg-primary/10 text-primary shadow-primary/5"
+                            )}>{t.status}</Badge>
+                          </TableCell>
+                          <TableCell className="px-12 text-right">
+                            <div className="flex items-center justify-end gap-3">
                               {t.status !== "Success" && (
                                 <>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <Button variant="ghost" size="icon" onClick={() => handleApproveTrade(t)} className="h-10 w-10 rounded-xl text-green-500 hover:bg-green-500/10 border border-white/5">
-                                        <CheckCircle className="w-4 h-4" />
+                                      <Button variant="ghost" size="icon" onClick={() => handleApproveTrade(t)} className="h-11 w-11 rounded-xl text-green-500 hover:bg-green-500/10 border border-white/5 transition-all">
+                                        <CheckCircle className="w-5 h-5" />
                                       </Button>
                                     </TooltipTrigger>
-                                    <TooltipContent className="bg-black/90 border-white/10 text-[9px] uppercase font-bold">Approve & Release</TooltipContent>
+                                    <TooltipContent className="bg-black/95 border-white/10 text-[9px] uppercase font-bold tracking-widest p-3">Approve & Release</TooltipContent>
                                   </Tooltip>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <Button variant="ghost" size="icon" onClick={() => handleTradeStatusUpdate(t, "Hold")} className="h-10 w-10 rounded-xl text-amber-500 hover:bg-amber-500/10 border border-white/5">
-                                        <Clock className="w-4 h-4" />
+                                      <Button variant="ghost" size="icon" onClick={() => handleTradeStatusUpdate(t, "Hold")} className="h-11 w-11 rounded-xl text-amber-500 hover:bg-amber-500/10 border border-white/5 transition-all">
+                                        <Clock className="w-5 h-5" />
                                       </Button>
                                     </TooltipTrigger>
-                                    <TooltipContent className="bg-black/90 border-white/10 text-[9px] uppercase font-bold">Put on Hold</TooltipContent>
-                                  </Tooltip>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button variant="ghost" size="icon" onClick={() => handleTradeStatusUpdate(t, "KYC Required")} className="h-10 w-10 rounded-xl text-blue-500 hover:bg-blue-500/10 border border-white/5">
-                                        <ShieldCheck className="w-4 h-4" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent className="bg-black/90 border-white/10 text-[9px] uppercase font-bold">Request KYC</TooltipContent>
+                                    <TooltipContent className="bg-black/95 border-white/10 text-[9px] uppercase font-bold tracking-widest p-3">Put on Hold</TooltipContent>
                                   </Tooltip>
                                 </>
                               )}
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <Button variant="ghost" size="icon" onClick={() => handleTradeStatusUpdate(t, "Delete")} className="h-10 w-10 rounded-xl text-red-500 hover:bg-red-500/10 border border-white/5">
-                                    <Trash2 className="w-4 h-4" />
+                                  <Button variant="ghost" size="icon" onClick={() => handleTradeStatusUpdate(t, "Delete")} className="h-11 w-11 rounded-xl text-red-500 hover:bg-red-500/10 border border-white/5 transition-all">
+                                    <Trash2 className="w-5 h-5" />
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent className="bg-black/90 border-white/10 text-[9px] uppercase font-bold">Purge Record</TooltipContent>
+                                <TooltipContent className="bg-black/95 border-white/10 text-[9px] uppercase font-bold tracking-widest p-3">Purge Record</TooltipContent>
                               </Tooltip>
                             </div>
-                         </TableCell>
-                         <TableCell className="text-right px-10 text-[10px] opacity-30 group-hover:opacity-60 font-bold uppercase tracking-widest transition-opacity">
-                           {new Date(t.initiationTime).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase()}
-                         </TableCell>
-                       </TableRow>
-                     ))}
-                   </TableBody>
-                 </Table>
-               </CardContent>
-            </Card>
-          </TabsContent>
+                          </TableCell>
+                          <TableCell className="text-right px-12 text-[10px] opacity-20 group-hover:opacity-60 font-black uppercase tracking-[0.2em] transition-all">
+                            {new Date(t.initiation_time).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }).toUpperCase()}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-          <TabsContent value="withdrawals">
-            <Card className="glass-card border-none rounded-[3rem] overflow-hidden animate-in-scale">
-               <CardHeader className="p-8 md:p-10 border-b border-white/[0.05] flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center border border-primary/20 shrink-0">
-                      <ArrowUpRight className="w-6 h-6 text-primary" />
+            <TabsContent value="withdrawals" className="mt-0 outline-none">
+              <Card className="glass-card border-none rounded-[3rem] overflow-hidden animate-in-scale">
+                <CardHeader className="p-8 md:p-12 border-b border-white/[0.05] flex flex-col md:flex-row md:items-center justify-between gap-8">
+                  <div className="flex items-center gap-6">
+                    <div className="w-16 h-16 bg-primary/10 rounded-[2rem] flex items-center justify-center border border-primary/20 shrink-0">
+                      <ArrowUpRight className="w-8 h-8 text-primary" />
                     </div>
                     <div>
-                      <h2 className="text-xl font-headline font-black uppercase tracking-tight">Withdrawal Management</h2>
-                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest opacity-60 mt-0.5">Capital Outflow Control Hub</p>
+                      <h2 className="text-2xl font-headline font-black uppercase tracking-tight">Withdrawal Management</h2>
+                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-[0.2em] opacity-60 mt-1">Institutional Payout Protocols</p>
                     </div>
                   </div>
-                  <Badge variant="outline" className="text-[10px] py-1.5 px-4 font-bold uppercase border-white/10 text-muted-foreground rounded-full bg-white/5">Institutional Payouts</Badge>
-               </CardHeader>
-               <CardContent className="p-0 overflow-x-auto">
-                 <Table>
-                   <TableHeader>
-                     <TableRow className="border-white/[0.05] bg-white/[0.02] hover:bg-transparent h-16">
-                       <TableHead className="px-10 text-hierarchy-label">ID</TableHead>
-                       <TableHead className="text-hierarchy-label">Participant</TableHead>
-                       <TableHead className="text-hierarchy-label">Value (INR)</TableHead>
-                       <TableHead className="text-hierarchy-label">Gateway Endpoint</TableHead>
-                       <TableHead className="text-hierarchy-label">Status</TableHead>
-                       <TableHead className="px-10 text-right text-hierarchy-label">Actions</TableHead>
-                     </TableRow>
-                   </TableHeader>
-                   <TableBody>
-                     {isWithdrawalsLoading ? (
-                       <TableRow><TableCell colSpan={6} className="h-60 text-center"><Loader2 className="w-10 h-10 animate-spin mx-auto text-primary" /></TableCell></TableRow>
-                     ) : !allWithdrawals?.length ? (
-                       <TableRow><TableCell colSpan={6} className="h-60 text-center opacity-20 uppercase font-black tracking-[0.3em] text-xs italic">No withdrawal requests found</TableCell></TableRow>
-                     ) : allWithdrawals.map((w) => (
-                       <TableRow key={w.id} className="border-white/[0.05] hover:bg-white/[0.03] transition-all group h-20">
-                         <TableCell className="px-10 font-mono text-xs text-white/40 group-hover:text-white/90 transition-colors">
-                            <span className="px-2 py-1 rounded bg-white/5 border border-white/5">#{w.id.slice(-6).toUpperCase()}</span>
-                         </TableCell>
-                         <TableCell className="font-black text-white uppercase text-xs italic">{w.username}</TableCell>
-                         <TableCell className="font-black text-primary uppercase text-sm italic group-hover:scale-105 transition-transform origin-left">₹{w.amount?.toLocaleString()}</TableCell>
-                         <TableCell className="text-[10px] font-black text-white/70 uppercase tracking-widest">
-                           <div className="flex flex-col gap-0.5">
-                             <span>{w.gatewayDetails?.type} • {w.gatewayDetails?.name}</span>
-                             <span className="text-[9px] text-primary/60 font-mono tracking-tighter opacity-80 bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10 w-fit">
-                               {w.gatewayDetails?.detail}
-                             </span>
-                           </div>
-                         </TableCell>
-                         <TableCell>
-                           <Badge className={`px-3 py-1 text-[10px] font-black uppercase rounded-full border-none ${
-                             w.status === "Success" ? "bg-green-500/10 text-green-500 shadow-[0_0_10px_rgba(34,197,94,0.1)]" : 
-                             w.status === "Pending" ? "bg-amber-500/10 text-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.1)]" : 
-                             w.status === "Hold" ? "bg-red-500/10 text-red-500 shadow-[0_0_10px_rgba(239,68,68,0.1)]" :
-                             w.status === "Verification Required" ? "bg-purple-500/10 text-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.1)]" :
-                             "bg-primary/10 text-primary shadow-primary/10"
-                           }`}>{w.status}</Badge>
-                         </TableCell>
-                         <TableCell className="px-10 text-right">
-                            <div className="flex items-center justify-end gap-2">
+                  <Badge variant="outline" className="text-[10px] py-2 px-6 font-black uppercase border-white/10 text-muted-foreground rounded-full bg-white/5 tracking-[0.2em]">Priority Queue</Badge>
+                </CardHeader>
+                <CardContent className="p-0 overflow-x-auto no-scrollbar">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-white/[0.05] bg-white/[0.02] hover:bg-transparent h-20">
+                        <TableHead className="px-12 text-hierarchy-label">ID</TableHead>
+                        <TableHead className="text-hierarchy-label">Participant</TableHead>
+                        <TableHead className="text-hierarchy-label">Value (INR)</TableHead>
+                        <TableHead className="text-hierarchy-label">Gateway Endpoint</TableHead>
+                        <TableHead className="text-hierarchy-label">Status</TableHead>
+                        <TableHead className="px-12 text-right text-hierarchy-label">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {isWithdrawalsLoading ? (
+                        <TableRow><TableCell colSpan={6} className="h-80 text-center"><Loader2 className="w-12 h-12 animate-spin mx-auto text-primary/40" /></TableCell></TableRow>
+                      ) : !allWithdrawals?.length ? (
+                        <TableRow><TableCell colSpan={6} className="h-80 text-center opacity-20 uppercase font-black tracking-[0.4em] text-sm italic">No withdrawal requests found</TableCell></TableRow>
+                      ) : allWithdrawals.map((w) => (
+                        <TableRow key={w.id} className="border-white/[0.05] hover:bg-white/[0.03] transition-all group h-24">
+                          <TableCell className="px-12 font-mono text-xs text-white/20 group-hover:text-white/60 transition-colors">
+                            <span className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/5 tracking-wider">#{w.id.slice(-8).toUpperCase()}</span>
+                          </TableCell>
+                          <TableCell className="font-black text-white uppercase text-sm italic group-hover:text-primary transition-colors">{w.username}</TableCell>
+                          <TableCell className="font-black text-primary uppercase text-base italic group-hover:scale-110 transition-transform origin-left">₹{w.amount?.toLocaleString()}</TableCell>
+                          <TableCell className="text-[11px] font-black text-white/40 uppercase tracking-[0.1em] group-hover:text-white/70 transition-colors">
+                            <div className="flex flex-col gap-1.5">
+                              <span className="font-black italic">{w.gatewayDetails?.type} • {w.gatewayDetails?.name}</span>
+                              <span className="text-[10px] text-primary/40 font-mono tracking-tight bg-primary/5 px-2 py-1 rounded-md border border-primary/10 w-fit">
+                                {w.gatewayDetails?.detail}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={cn("px-4 py-1.5 text-[9px] font-black uppercase rounded-full border-none transition-all shadow-lg", 
+                              w.status === "Success" ? "bg-green-500/10 text-green-500 shadow-green-500/5" : 
+                              w.status === "Pending" ? "bg-amber-500/10 text-amber-500 shadow-amber-500/5" : 
+                              w.status === "Hold" ? "bg-red-500/10 text-red-500 shadow-red-500/5" :
+                              w.status === "Verification Required" ? "bg-purple-500/10 text-purple-500 shadow-purple-500/5" :
+                              "bg-primary/10 text-primary shadow-primary/5"
+                            )}>{w.status}</Badge>
+                          </TableCell>
+                          <TableCell className="px-12 text-right">
+                            <div className="flex items-center justify-end gap-3">
                               {w.status !== "Success" && (
                                 <>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <Button variant="ghost" size="icon" onClick={() => handleWithdrawalAction(w, "Success")} className="h-10 w-10 rounded-xl text-green-500 hover:bg-green-500/10 border border-white/5">
-                                        <CheckCircle className="w-4 h-4" />
+                                      <Button variant="ghost" size="icon" onClick={() => handleWithdrawalAction(w, "Success")} className="h-11 w-11 rounded-xl text-green-500 hover:bg-green-500/10 border border-white/5 transition-all">
+                                        <CheckCircle className="w-5 h-5" />
                                       </Button>
                                     </TooltipTrigger>
-                                    <TooltipContent className="bg-black/90 border-white/10 text-[9px] uppercase font-bold">Mark as Paid</TooltipContent>
+                                    <TooltipContent className="bg-black/95 border-white/10 text-[9px] uppercase font-bold tracking-widest p-3">Mark as Paid</TooltipContent>
                                   </Tooltip>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <Button variant="ghost" size="icon" onClick={() => handleWithdrawalAction(w, "Hold")} className="h-10 w-10 rounded-xl text-amber-500 hover:bg-amber-500/10 border border-white/5">
-                                        <Clock className="w-4 h-4" />
+                                      <Button variant="ghost" size="icon" onClick={() => handleWithdrawalAction(w, "Hold")} className="h-11 w-11 rounded-xl text-amber-500 hover:bg-amber-500/10 border border-white/5 transition-all">
+                                        <Clock className="w-5 h-5" />
                                       </Button>
                                     </TooltipTrigger>
-                                    <TooltipContent className="bg-black/90 border-white/10 text-[9px] uppercase font-bold">Put on Hold</TooltipContent>
-                                  </Tooltip>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button variant="ghost" size="icon" onClick={() => handleWithdrawalAction(w, "Verification Required")} className="h-10 w-10 rounded-xl text-purple-500 hover:bg-purple-500/10 border border-white/5">
-                                        <ShieldCheck className="w-4 h-4" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent className="bg-black/90 border-white/10 text-[9px] uppercase font-bold">Request KYC</TooltipContent>
+                                    <TooltipContent className="bg-black/95 border-white/10 text-[9px] uppercase font-bold tracking-widest p-3">Put on Hold</TooltipContent>
                                   </Tooltip>
                                 </>
                               )}
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <Button variant="ghost" size="icon" onClick={() => handleWithdrawalAction(w, "Delete")} className="h-10 w-10 rounded-xl text-red-500 hover:bg-red-500/10 border border-white/5">
-                                    <Trash2 className="w-4 h-4" />
+                                  <Button variant="ghost" size="icon" onClick={() => handleWithdrawalAction(w, "Delete")} className="h-11 w-11 rounded-xl text-red-500 hover:bg-red-500/10 border border-white/5 transition-all">
+                                    <Trash2 className="w-5 h-5" />
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent className="bg-black/90 border-white/10 text-[9px] uppercase font-bold">Purge Record</TooltipContent>
+                                <TooltipContent className="bg-black/95 border-white/10 text-[9px] uppercase font-bold tracking-widest p-3">Purge Record</TooltipContent>
                               </Tooltip>
                             </div>
-                         </TableCell>
-                       </TableRow>
-                     ))}
-                   </TableBody>
-                 </Table>
-               </CardContent>
-            </Card>
-          </TabsContent>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-
-          <TabsContent value="offers">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {isOffersLoading ? (
-                <div className="col-span-full py-20 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" /></div>
-              ) : !allOffers?.length ? (
-                <div className="col-span-full py-20 text-center opacity-20 font-bold uppercase tracking-widest text-[10px]">No market positions active</div>
-              ) : allOffers.map((off) => (
-                <Card key={off.id} className="glass-card border-none rounded-[1.5rem] p-4 flex flex-col min-h-[180px] justify-between space-y-3 hover:border-primary/20 transition-all group/card relative">
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        {off.iconCid ? (
-                          <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-white/10 bg-white/5 shadow-inner shrink-0">
-                            <Image src={`https://ipfs.io/ipfs/${off.iconCid}`} alt={off.cryptoAssetId} fill className="object-cover" unoptimized />
+            <TabsContent value="offers" className="mt-0 outline-none">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
+                {isOffersLoading ? (
+                  <div className="col-span-full py-40 text-center"><Loader2 className="w-12 h-12 animate-spin mx-auto text-primary/40" /></div>
+                ) : !allOffers?.length ? (
+                  <div className="col-span-full py-40 text-center opacity-20 font-black uppercase tracking-[0.4em] text-sm">No market positions active</div>
+                ) : allOffers.map((off) => (
+                  <Card key={off.id} className="glass-card border-none rounded-[2rem] p-6 flex flex-col min-h-[220px] justify-between space-y-6 hover:border-primary/30 transition-all group/card relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover/card:bg-primary/10 transition-all duration-700" />
+                    <div className="space-y-4 relative z-10">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-4 min-w-0 flex-1">
+                          {off.iconCid ? (
+                            <div className="relative w-14 h-14 rounded-2xl overflow-hidden border border-white/10 bg-white/5 shadow-2xl shrink-0 group-hover/card:scale-110 transition-transform duration-500">
+                              <Image src={`https://ipfs.io/ipfs/${off.iconCid}`} alt={off.cryptoAssetId} fill className="object-cover opacity-80 group-hover/card:opacity-100 transition-opacity" unoptimized />
+                            </div>
+                          ) : (
+                            <div className="w-14 h-14 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center shrink-0">
+                              <ImageIcon className="w-6 h-6 text-muted-foreground opacity-20" />
+                            </div>
+                          )}
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <p className="text-[9px] text-primary font-black uppercase tracking-[0.2em] truncate mb-1">
+                              {off.displayName || off.traderUsername || 'Verified Node'}
+                            </p>
+                            <p className="font-headline font-black text-xl uppercase tracking-tighter text-white leading-none truncate italic">
+                              {off.cryptoAssetId}
+                            </p>
                           </div>
-                        ) : (
-                          <div className="w-10 h-10 rounded-lg border border-white/10 bg-white/5 flex items-center justify-center shrink-0">
-                            <ImageIcon className="w-4 h-4 text-muted-foreground opacity-30" />
-                          </div>
-                        )}
-                        <div className="flex flex-col min-w-0 flex-1">
-                          <p className="text-[8px] text-primary font-bold uppercase tracking-[0.1em] truncate mb-0.5">
-                            {off.displayName || off.traderUsername || 'Verified Node'}
-                          </p>
-                          <p className="font-headline font-black text-base uppercase tracking-tighter text-white/90 leading-none truncate">
-                            {off.cryptoAssetId}
-                          </p>
+                        </div>
+                        <div className="flex flex-col gap-2 shrink-0 opacity-0 group-hover/card:opacity-100 transition-all duration-300 translate-x-2 group-hover/card:translate-x-0">
+                          <Button variant="ghost" size="icon" onClick={() => handleEditOffer(off)} className="hover:bg-primary/10 h-8 w-8 rounded-xl transition-all"><Edit2 className="w-4 h-4 text-primary" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDuplicateOffer(off)} className="hover:bg-primary/10 h-8 w-8 rounded-xl transition-all"><Copy className="w-4 h-4 text-primary" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDeleteOffer(off.id)} className="hover:bg-red-500/10 h-8 w-8 rounded-xl transition-all"><Trash2 className="w-4 h-4 text-red-500" /></Button>
                         </div>
                       </div>
-                      <div className="flex flex-col gap-1 shrink-0 opacity-0 group-hover/card:opacity-100 transition-all duration-300 translate-x-1 group-hover/card:translate-x-0">
-                        <Button variant="ghost" size="icon" onClick={() => handleEditOffer(off)} className="hover:bg-primary/10 h-6 w-6 rounded-md transition-colors"><Edit2 className="w-3 h-3 text-primary" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDuplicateOffer(off)} className="hover:bg-primary/10 h-6 w-6 rounded-md transition-colors"><Copy className="w-3 h-3 text-primary" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => deleteDocumentNonBlocking(doc(db, "trader_buy_offers", off.id))} className="hover:bg-red-500/10 h-6 w-6 rounded-md transition-colors"><Trash2 className="w-3 h-3 text-red-500" /></Button>
-                      </div>
+                      {off.description && (
+                        <div className="px-3 border-l-2 border-primary/20 ml-1">
+                          <p className="text-[10px] text-white/40 line-clamp-2 leading-relaxed italic font-bold uppercase tracking-wider">
+                            &quot;{off.description}&quot;
+                          </p>
+                        </div>
+                      )}
                     </div>
-                    {off.description && (
-                      <div className="px-1 border-l border-primary/20 ml-1">
-                        <p className="text-[8px] text-muted-foreground line-clamp-2 leading-relaxed italic pl-2 opacity-60">
-                          &quot;{off.description}&quot;
-                        </p>
+                    
+                    <div className="pt-6 border-t border-white/[0.05] flex justify-between items-end relative z-10">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[8px] text-white/20 font-black uppercase tracking-[0.3em]">Fixed Rate</span>
+                        <p className="text-xl font-headline font-black text-primary leading-none italic">{off.fixedPricePerCrypto} <span className="text-[10px] opacity-40 not-italic tracking-normal ml-1">{off.fiatCurrency}</span></p>
                       </div>
-                    )}
-                  </div>
-                  
-                  <div className="pt-3 border-t border-white/5 flex justify-between items-center">
-                    <div className="flex flex-col">
-                      <span className="text-[6px] text-muted-foreground font-bold uppercase tracking-widest mb-0.5">Fixed Rate</span>
-                      <p className="text-sm font-headline font-bold text-primary leading-none">{off.fixedPricePerCrypto} <span className="text-[8px] opacity-50">{off.fiatCurrency}</span></p>
+                      <Badge variant="outline" className="text-[8px] py-1 px-3 border-white/10 text-white/30 uppercase font-black tracking-widest rounded-lg bg-white/5">
+                        {off.status || 'Active'}
+                      </Badge>
                     </div>
-                    <Badge variant="outline" className="text-[6px] py-0 px-1.5 border-white/5 text-muted-foreground uppercase font-bold tracking-tighter scale-90">
-                      {off.status || 'Active'}
-                    </Badge>
-                  </div>
-                </Card>
-              ))}
-              <button onClick={() => { resetOfferForm(); setIsAddOfferOpen(true); }} className="border-2 border-dashed border-white/5 rounded-[1.5rem] h-[180px] flex flex-col items-center justify-center gap-2 hover:border-primary/20 hover:bg-white/[0.02] transition-all group">
-                 <Plus className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
-                 <span className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground group-hover:text-white transition-colors">Global Position</span>
-              </button>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="branding">
-            <div className="max-w-5xl mx-auto space-y-8 pb-20">
-              <div className="text-center space-y-4 mb-12">
-                <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto border border-primary/20 glow-primary">
-                  <Settings className="w-8 h-8 text-primary" />
-                </div>
-                <h2 className="text-3xl font-headline font-black uppercase tracking-tighter text-white">Branding Configuration</h2>
-                <p className="text-primary text-[8px] uppercase tracking-[0.4em] font-bold">Global Visual Identity Protocols</p>
+                  </Card>
+                ))}
+                <button onClick={() => { resetOfferForm(); setIsAddOfferOpen(true); }} className="border-2 border-dashed border-white/10 rounded-[2rem] min-h-[220px] flex flex-col items-center justify-center gap-4 hover:border-primary/40 hover:bg-primary/5 transition-all group shadow-2xl">
+                   <div className="w-16 h-16 rounded-[1.5rem] bg-white/5 flex items-center justify-center group-hover:bg-primary/20 group-hover:scale-110 transition-all duration-500">
+                     <Plus className="w-8 h-8 text-white/20 group-hover:text-primary transition-colors" />
+                   </div>
+                   <span className="text-[10px] font-black uppercase tracking-[0.4em] text-white/20 group-hover:text-white transition-colors">Global Position</span>
+                </button>
               </div>
+            </TabsContent>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* Gold Logo Option */}
-                <Card 
-                  className={`glass-card border-2 rounded-[2.5rem] p-10 space-y-8 cursor-pointer transition-all duration-500 group ${selectedLogo === 'gold' ? 'border-primary bg-primary/5 shadow-[0_0_40px_rgba(139,92,246,0.1)]' : 'border-white/5 hover:border-white/20'}`}
-                  onClick={() => handleUpdateBranding('gold')}
-                >
-                  <div className="flex flex-col items-center gap-6">
-                    <USDTGoldLogo className="w-48 h-48 drop-shadow-[0_0_30px_rgba(253,185,51,0.3)] group-hover:scale-105 transition-transform duration-700" />
-                    <div className="text-center space-y-2">
-                      <h3 className="text-xl font-headline font-black uppercase tracking-widest text-white italic">USDT GOLD</h3>
-                      <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em]">Institutional Premium Aesthetic</p>
-                    </div>
+            <TabsContent value="branding" className="mt-0 outline-none">
+              <div className="max-w-6xl mx-auto space-y-16 pb-20">
+                <div className="text-center space-y-6">
+                  <div className="w-20 h-20 bg-primary/10 rounded-[2.5rem] flex items-center justify-center mx-auto border border-primary/20 glow-primary shadow-2xl">
+                    <Settings className="w-10 h-10 text-primary" />
                   </div>
-                  <div className="flex items-center justify-center">
+                  <div className="space-y-2">
+                    <h2 className="text-4xl md:text-5xl font-headline font-black uppercase tracking-tighter text-white italic">Branding Protocol</h2>
+                    <p className="text-primary text-[10px] uppercase tracking-[0.6em] font-black opacity-80">Global Visual Identity Synchronization</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+                  <Card 
+                    className={cn("glass-card border-2 rounded-[4rem] p-12 space-y-10 cursor-pointer transition-all duration-700 group relative overflow-hidden", selectedLogo === 'gold' ? 'border-primary bg-primary/10 shadow-[0_0_80px_rgba(139,92,246,0.2)]' : 'border-white/5 hover:border-white/20 hover:bg-white/[0.02]')}
+                    onClick={() => handleUpdateBranding('gold')}
+                  >
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2" />
+                    <div className="flex flex-col items-center gap-10 relative z-10">
+                      <div className="relative group-hover:scale-110 transition-transform duration-700">
+                        <USDTGoldLogo className="w-48 h-48 drop-shadow-[0_0_50px_rgba(253,185,51,0.4)]" />
+                      </div>
+                      <div className="text-center space-y-3">
+                        <h3 className="text-xl font-headline font-black uppercase tracking-[0.2em] text-white italic">USDT GOLD</h3>
+                        <p className="text-[10px] text-white/40 font-black uppercase tracking-[0.4em]">Institutional Premium Aesthetic</p>
+                      </div>
+                    </div>
                     <Button 
-                      className={`w-full h-14 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all ${selectedLogo === 'gold' ? 'bg-primary text-white glow-primary' : 'bg-white/5 text-white/40 border border-white/10 hover:text-white'}`}
+                      className={cn("w-full h-16 rounded-[2rem] font-black uppercase tracking-[0.4em] text-[10px] transition-all relative z-10", selectedLogo === 'gold' ? 'bg-primary text-white glow-primary-lg scale-105' : 'bg-white/5 text-white/20 border border-white/10 hover:text-white hover:bg-white/10')}
                       disabled={isBrandingUpdating || selectedLogo === 'gold'}
                     >
-                      {selectedLogo === 'gold' ? 'ACTIVE PROTOCOL' : 'SELECT IDENTITY'}
+                      {selectedLogo === 'gold' ? 'ACTIVE' : 'SELECT'}
                     </Button>
-                  </div>
-                </Card>
+                  </Card>
 
-                {/* Original Logo Option */}
-                <Card 
-                  className={`glass-card border-2 rounded-[2.5rem] p-10 space-y-8 cursor-pointer transition-all duration-500 group ${selectedLogo === 'original' ? 'border-[#26A17B] bg-[#26A17B]/5 shadow-[0_0_40px_rgba(38,161,123,0.1)]' : 'border-white/5 hover:border-white/20'}`}
-                  onClick={() => handleUpdateBranding('original')}
-                >
-                  <div className="flex flex-col items-center gap-6">
-                    <USDTOriginalLogo className="w-48 h-48 drop-shadow-[0_0_30px_rgba(38,161,123,0.3)] group-hover:scale-105 transition-transform duration-700" />
-                    <div className="text-center space-y-2">
-                      <h3 className="text-xl font-headline font-black uppercase tracking-widest text-white italic">USDT ORIGINAL</h3>
-                      <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em]">Standard Network Authenticity</p>
+                  <Card 
+                    className={cn("glass-card border-2 rounded-[4rem] p-12 space-y-10 cursor-pointer transition-all duration-700 group relative overflow-hidden", selectedLogo === 'original' ? 'border-[#26A17B] bg-[#26A17B]/10 shadow-[0_0_80px_rgba(38,161,123,0.2)]' : 'border-white/5 hover:border-white/20 hover:bg-white/[0.02]')}
+                    onClick={() => handleUpdateBranding('original')}
+                  >
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-[#26A17B]/5 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2" />
+                    <div className="flex flex-col items-center gap-10 relative z-10">
+                      <div className="relative group-hover:scale-110 transition-transform duration-700">
+                        <USDTOriginalLogo className="w-48 h-48 drop-shadow-[0_0_50px_rgba(38,161,123,0.4)]" />
+                      </div>
+                      <div className="text-center space-y-3">
+                        <h3 className="text-xl font-headline font-black uppercase tracking-[0.2em] text-white italic">USDT ORIGINAL</h3>
+                        <p className="text-[10px] text-white/40 font-black uppercase tracking-[0.4em]">Standard Network Authenticity</p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center justify-center">
                     <Button 
-                      className={`w-full h-14 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all ${selectedLogo === 'original' ? 'bg-[#26A17B] text-white shadow-[0_0_30px_rgba(38,161,123,0.4)]' : 'bg-white/5 text-white/40 border border-white/10 hover:text-white'}`}
+                      className={cn("w-full h-16 rounded-[2rem] font-black uppercase tracking-[0.4em] text-[10px] transition-all relative z-10", selectedLogo === 'original' ? 'bg-[#26A17B] text-white shadow-[0_0_50px_rgba(38,161,123,0.5)] scale-105' : 'bg-white/5 text-white/20 border border-white/10 hover:text-white hover:bg-white/10')}
                       disabled={isBrandingUpdating || selectedLogo === 'original'}
                     >
-                      {selectedLogo === 'original' ? 'ACTIVE PROTOCOL' : 'SELECT IDENTITY'}
+                      {selectedLogo === 'original' ? 'ACTIVE' : 'SELECT'}
                     </Button>
-                  </div>
-                </Card>
-              </div>
+                  </Card>
 
-              <div className="bg-primary/5 border border-primary/10 rounded-[2rem] p-8 mt-12">
-                <div className="flex items-start gap-4">
-                  <ShieldAlert className="w-6 h-6 text-primary shrink-0 mt-1" />
-                  <div className="space-y-2">
-                    <h4 className="text-xs font-black uppercase tracking-widest text-white">Protocol Synchronicity</h4>
-                    <p className="text-[10px] text-white/40 leading-relaxed font-bold uppercase tracking-widest">
-                      Changing the visual identity will instantly synchronize across all participant nodes (Traders, Agents, and Clients). Ensure branding alignment before committing.
+                  <Card 
+                    className={cn("glass-card border-2 rounded-[4rem] p-10 space-y-8 transition-all duration-700 group relative overflow-hidden flex flex-col justify-between", selectedLogo === 'custom' ? 'border-amber-500 bg-amber-500/10 shadow-[0_0_80px_rgba(245,158,11,0.2)]' : 'border-white/5 hover:border-white/20 hover:bg-white/[0.02]')}
+                  >
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2" />
+                    <div className="space-y-6 relative z-10">
+                      <div className="flex flex-col items-center gap-6">
+                        <div className="w-32 h-32 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden">
+                          {customLogoCid ? (
+                            <img src={`https://4everland.io/ipfs/${customLogoCid}`} alt="Custom Logo" className="w-24 h-24 object-contain" />
+                          ) : (
+                            <ImageIcon className="w-12 h-12 text-white/20" />
+                          )}
+                        </div>
+                        <div className="text-center space-y-2">
+                          <h3 className="text-xl font-headline font-black uppercase tracking-[0.2em] text-white italic">CUSTOM IDENTITY</h3>
+                          <p className="text-[10px] text-white/40 font-black uppercase tracking-[0.4em]">IPFS CID Protocol</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label className="text-[8px] font-black uppercase tracking-widest text-white/40 ml-1">IPFS CID (PNG)</Label>
+                          <Input 
+                            placeholder="bafybe..." 
+                            value={customLogoCid}
+                            onChange={(e) => setCustomLogoCid(e.target.value.trim())}
+                            className="h-14 rounded-2xl bg-white/5 border-white/10 text-[10px] font-mono tracking-widest text-white focus:ring-amber-500"
+                          />
+                        </div>
+                        <Button 
+                          onClick={() => handleUpdateBranding('custom', customLogoCid)}
+                          className={cn("w-full h-16 rounded-[2rem] font-black uppercase tracking-[0.4em] text-[10px] transition-all", selectedLogo === 'custom' ? 'bg-amber-500 text-white shadow-[0_0_50px_rgba(245,158,11,0.5)]' : 'bg-white/5 text-white/40 border border-white/10 hover:text-white hover:bg-white/10')}
+                          disabled={isBrandingUpdating || !customLogoCid}
+                        >
+                          {selectedLogo === 'custom' ? 'ACTIVE PROTOCOL' : 'APPLY CID'}
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+
+                <div className="bg-primary/5 border border-primary/10 rounded-[3rem] p-10 flex items-start gap-8 max-w-4xl mx-auto shadow-2xl animate-pulse">
+                  <ShieldAlert className="w-10 h-10 text-primary shrink-0 mt-1" />
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-black uppercase tracking-[0.3em] text-white italic">Protocol Synchronicity Warning</h4>
+                    <p className="text-[11px] text-white/30 leading-relaxed font-bold uppercase tracking-[0.2em]">
+                      Initiating a visual identity shift will trigger an immediate, irreversible synchronization across all active participant nodes (Traders, Agents, and Clients). Ensure full branding alignment with network objectives before committing to a change.
                     </p>
                   </div>
                 </div>
               </div>
-            </div>
-          </TabsContent>
+            </TabsContent>
 
-          <TabsContent value="support">
-            <div className="max-w-5xl mx-auto space-y-8 pb-20">
-              <div className="text-center space-y-4 mb-12">
-                <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto border border-primary/20 glow-primary">
-                  <Headset className="w-8 h-8 text-primary" />
-                </div>
+            <TabsContent value="support" className="mt-0 outline-none">
+              <div className="max-w-5xl mx-auto space-y-12 pb-20">
+                <div className="text-center space-y-6 mb-16">
+                  <div className="w-20 h-20 bg-primary/10 rounded-[2.5rem] flex items-center justify-center mx-auto border border-primary/20 glow-primary shadow-2xl">
+                    <Headset className="w-10 h-10 text-primary" />
+                  </div>
                 <h2 className="text-3xl font-headline font-black uppercase tracking-tighter text-white">Institutional Support</h2>
                 <p className="text-primary text-[8px] uppercase tracking-[0.4em] font-bold">24/7 Global Assistance Hub</p>
               </div>
@@ -1316,33 +1279,6 @@ export default function AdminDashboard() {
                 <div className="space-y-2">
                   <Label className="text-[9px] uppercase font-bold opacity-50 ml-1">Fixed Price Rate</Label>
                   <Input type="number" step="0.01" value={offerPrice} onChange={e => setOfferPrice(e.target.value)} className="bg-white/5 border-white/10 h-12 rounded-xl focus:ring-primary/50" />
-                </div>
-              </div>
-              <div className="space-y-4 pt-4 border-t border-white/5">
-                <p className="text-[9px] uppercase font-bold text-primary tracking-[0.2em] mb-2">Institutional Wallets (3 Networks)</p>
-                <div className="space-y-2">
-                  <Label className="text-[9px] uppercase font-bold opacity-50 ml-1">TRC20 Wallet Address</Label>
-                  <Input value={offerWalletTrc20} onChange={e => setOfferWalletTrc20(e.target.value)} placeholder="T..." className="bg-white/5 border-white/10 h-12 rounded-xl focus:ring-primary/50" />
-                  <div className="flex gap-2 mt-1">
-                    <Input value={offerQrTrc20} onChange={e => setOfferQrTrc20(e.target.value)} placeholder="TRC20 QR CID" className="bg-white/5 border-white/10 h-10 rounded-xl font-mono text-[10px] focus:ring-primary/50 flex-1" />
-                    <IPFSPreview cid={offerQrTrc20} label="TRC20 QR" className="w-10 h-10" />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-[9px] uppercase font-bold opacity-50 ml-1">BEP20 Wallet Address</Label>
-                  <Input value={offerWalletBep20} onChange={e => setOfferWalletBep20(e.target.value)} placeholder="0x..." className="bg-white/5 border-white/10 h-12 rounded-xl focus:ring-primary/50" />
-                  <div className="flex gap-2 mt-1">
-                    <Input value={offerQrBep20} onChange={e => setOfferQrBep20(e.target.value)} placeholder="BEP20 QR CID" className="bg-white/5 border-white/10 h-10 rounded-xl font-mono text-[10px] focus:ring-primary/50 flex-1" />
-                    <IPFSPreview cid={offerQrBep20} label="BEP20 QR" className="w-10 h-10" />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-[9px] uppercase font-bold opacity-50 ml-1">ERC20 Wallet Address</Label>
-                  <Input value={offerWalletErc20} onChange={e => setOfferWalletErc20(e.target.value)} placeholder="0x..." className="bg-white/5 border-white/10 h-12 rounded-xl focus:ring-primary/50" />
-                  <div className="flex gap-2 mt-1">
-                    <Input value={offerQrErc20} onChange={e => setOfferQrErc20(e.target.value)} placeholder="ERC20 QR CID" className="bg-white/5 border-white/10 h-10 rounded-xl font-mono text-[10px] focus:ring-primary/50 flex-1" />
-                    <IPFSPreview cid={offerQrErc20} label="ERC20 QR" className="w-10 h-10" />
-                  </div>
                 </div>
               </div>
               <div className="space-y-2">
@@ -1480,11 +1416,15 @@ export default function AdminDashboard() {
                     const newState = !isReroutingEnabled;
                     setIsReroutingEnabled(newState);
                     try {
-                      await setDoc(doc(db, "settings", "global_gateway"), {
-                        isReroutingEnabled: newState,
-                        updatedAt: new Date().toISOString(),
-                        updatedBy: user?.email
-                      }, { merge: true });
+                      const { error } = await supabase.from("global_settings").upsert({
+                        id: "default",
+                        global_gateway: {
+                          ...(globalSettings?.global_gateway || {}),
+                          isReroutingEnabled: newState
+                        },
+                        updated_at: new Date().toISOString()
+                      });
+                      if (error) throw error;
                       toast({ title: `Gateway ${newState ? 'Activated' : 'Standby'}`, description: `Institutional rerouting is now ${newState ? 'live' : 'disabled'}.` });
                     } catch (e) {
                       console.error(e);
@@ -1624,8 +1564,7 @@ export default function AdminDashboard() {
           </DialogContent>
         </Dialog>
       </div>
-    </main>
-  </div>
+    </DashboardLayout>
   </TooltipProvider>
   );
 }

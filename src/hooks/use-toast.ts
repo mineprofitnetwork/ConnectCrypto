@@ -18,7 +18,7 @@ type ToasterToast = ToastProps & {
   action?: ToastActionElement
 }
 
-const actionTypes = {
+export const actionTypes = {
   ADD_TOAST: "ADD_TOAST",
   UPDATE_TOAST: "UPDATE_TOAST",
   DISMISS_TOAST: "DISMISS_TOAST",
@@ -94,7 +94,7 @@ export const reducer = (state: State, action: Action): State => {
       const { toastId } = action
 
       // ! Side effects ! - This could be extracted into a dismissToast() action,
-      // but I'll keep it here for simplicity
+      // but I will keep it here for simplicity
       if (toastId) {
         addToRemoveQueue(toastId)
       } else {
@@ -175,14 +175,18 @@ function useToast() {
   const [state, setState] = React.useState<State>(memoryState)
 
   React.useEffect(() => {
+    // Add this specific listener to the array
     listeners.push(setState)
+    
     return () => {
       const index = listeners.indexOf(setState)
       if (index > -1) {
         listeners.splice(index, 1)
       }
     }
-  }, [state])
+    // Remove [state] from here. 
+    // We only want to subscribe/unsubscribe on mount/unmount.
+  }, []) 
 
   return {
     ...state,

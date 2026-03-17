@@ -7,8 +7,18 @@ import React, { useState, useEffect } from 'react';
  * Positioned fixed behind all content.
  * Generates stars on the client-side to avoid hydration mismatches.
  */
+interface Star {
+  id: number;
+  top: string;
+  left: string;
+  size: string;
+  opacity: number;
+  duration: number;
+  delay: number;
+}
+
 export function GalaxyBackground() {
-  const [stars, setStars] = useState<any[]>([]);
+  const [stars, setStars] = useState<Star[]>([]);
 
   useEffect(() => {
     // Generate stars only on the client after initial hydration

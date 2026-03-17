@@ -4,7 +4,7 @@
 
 import {z} from 'zod';
 
-const TraderAICommunicationAssistantInputSchema = z.object({
+export const TraderAICommunicationAssistantInputSchema = z.object({
   messageType: z
     .enum(['sellInstructions', 'receiveConfirmation'])
     .describe('The type of message to generate: instructions for selling crypto or confirmation of receipt.'),
@@ -28,7 +28,7 @@ const TraderAICommunicationAssistantInputSchema = z.object({
 });
 export type TraderAICommunicationAssistantInput = z.infer<typeof TraderAICommunicationAssistantInputSchema>;
 
-const TraderAICommunicationAssistantOutputSchema = z.object({
+export const TraderAICommunicationAssistantOutputSchema = z.object({
   generatedMessage: z.string().describe('The AI-generated communication message.'),
   messagePurpose: z.enum(['sellInstructions', 'receiveConfirmation']).describe('The purpose of the generated message.'),
 });

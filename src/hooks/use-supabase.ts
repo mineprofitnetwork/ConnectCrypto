@@ -6,14 +6,14 @@ export function useSupabaseQuery<T>(
   table: string,
   queryOptions: {
     select?: string;
-    eq?: [string, any];
+    eq?: [string, unknown];
     order?: [string, { ascending?: boolean }];
     limit?: number;
   } = {}
 ) {
   const [data, setData] = useState<T[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<any>(null);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -50,7 +50,8 @@ export function useSupabaseQuery<T>(
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table },
-        (payload: RealtimePostgresChangesPayload<any>) => {
+        (payload: RealtimePostgresChangesPayload<T>) => {
+          console.log("Change detected:", payload);
           fetchData(); // Simplest way to handle updates for now
         }
       )
@@ -59,7 +60,7 @@ export function useSupabaseQuery<T>(
     return () => {
       supabase.removeChannel(subscription);
     };
-  }, [table, JSON.stringify(queryOptions)]);
+  }, [table, queryOptions.select, queryOptions.eq?.[0], queryOptions.eq?.[1], queryOptions.order?.[0], JSON.stringify(queryOptions.order?.[1]), queryOptions.limit]);
 
   return { data, loading, error };
 }
@@ -67,7 +68,7 @@ export function useSupabaseQuery<T>(
 export function useSupabaseDoc<T>(table: string, id: string | undefined) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<any>(null);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     if (!id) {

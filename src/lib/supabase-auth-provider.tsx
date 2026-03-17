@@ -26,7 +26,9 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
         const staticUser = JSON.parse(staticUserJson);
         setUser(staticUser);
         setLoading(false);
-      } catch (_e) {}
+      } catch (e) {
+        console.error("Failed to parse static user:", e);
+      }
     }
 
     // Get initial session

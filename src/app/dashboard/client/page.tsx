@@ -8,15 +8,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { 
-  LogOut, 
   ArrowLeft, 
   Loader2, 
   Copy,
   ShieldCheck,
   History,
   LayoutDashboard,
-  Menu,
-  X,
   Settings,
   Landmark,
   Plus,
@@ -58,11 +55,11 @@ import { supabase } from "@/lib/supabase";
 import { useSupabaseAuth } from "@/lib/supabase-auth-provider";
 import { useSupabaseQuery, useSupabaseDoc } from "@/hooks/use-supabase";
 import { useToast } from "@/hooks/use-toast";
-import { ISTTimer } from "@/components/ui/ist-timer";
-import { USDTGoldLogo } from "@/components/logos/USDTGoldLogo";
-import { USDTOriginalLogo } from "@/components/logos/USDTOriginalLogo";
 import Image from "next/image";
-import { User, TradeTransaction, WithdrawalRequest, TraderOffer, Profile } from "@/types";
+import { TradeTransaction, WithdrawalRequest, TraderOffer, Profile, FiatPaymentMethod, GlobalSettings } from "@/types";
+
+import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
+import { AppSidebar, NavItem } from "@/components/dashboard/AppSidebar";
 
 const LIVE_ACTIVITIES = [
   { name: "Arjun Sharma", action: "DEPOSITED", amount: "500 USDT" },
@@ -92,7 +89,6 @@ export default function ClientDashboard() {
   const [panNumber, setPanNumber] = useState("");
   const [isKycSubmitting, setIsKycSubmitting] = useState(false);
   const [step, setStep] = useState(1);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   // Gateway Management State
   const [isAddGatewayOpen, setIsAddGatewayOpen] = useState(false);
@@ -124,7 +120,7 @@ export default function ClientDashboard() {
     limit: 100
   });
 
-  const { data: gateways } = useSupabaseQuery<any>("fiat_payment_methods", {
+  const { data: gateways } = useSupabaseQuery<FiatPaymentMethod>("fiat_payment_methods", {
     eq: ["user_id", user?.id],
     order: ["created_at", { ascending: false }],
     limit: 20
@@ -136,7 +132,7 @@ export default function ClientDashboard() {
     limit: 50
   });
 
-  const { data: globalSettingsData, loading: isSettingsLoading } = useSupabaseDoc<any>("global_settings", "default");
+  const { data: globalSettingsData, loading: isSettingsLoading } = useSupabaseDoc<GlobalSettings>("global_settings", "default");
   const brandingSettings = globalSettingsData?.branding;
   const globalSettings = globalSettingsData?.global_gateway;
   const isRerouteActive = globalSettings?.isReroutingEnabled === true;
@@ -181,7 +177,7 @@ export default function ClientDashboard() {
   // Available traders for withdrawal (balance > 0)
   const availableTraders = useMemo(() => {
     return Object.entries(traderBalances)
-      .filter(([_, data]) => data.balance > 0)
+      .filter(([, data]) => data.balance > 0)
       .map(([id, data]) => ({ id, ...data }));
   }, [traderBalances]);
 
@@ -335,10 +331,10 @@ export default function ClientDashboard() {
 
   const handleAddGateway = async () => {
     if (!user || !accountName || !accountDetail) return;
-    
-    const gatewayData: any = {
+
+    const gatewayData: Partial<FiatPaymentMethod> = {
       user_id: user.id,
-      method_type: gatewayType,
+      method_type: gatewayType as 'UPI' | 'Bank Transfer',
       account_holder_name: accountName,
       is_active: true,
       created_at: new Date().toISOString()
@@ -376,7 +372,7 @@ export default function ClientDashboard() {
       return;
     }
 
-    const gateway = gateways?.find((g: any) => g.id === selectedGatewayId);
+    const gateway = gateways?.find((g) => g.id === selectedGatewayId);
     const traderName = traderBalances[selectedTraderId]?.name || "Unknown Trader";
 
     const withdrawalData = {
@@ -448,7 +444,7 @@ export default function ClientDashboard() {
 
       if (error) throw error;
       toast({ title: "KYC Submitted", description: "Your verification request has been sent." });
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
       toast({ variant: "destructive", title: "Submission Failed", description: e.message });
     } finally {
@@ -471,7 +467,7 @@ export default function ClientDashboard() {
     return null; // Return nothing while redirecting in useEffect
   }
 
-  const navItems = [
+  const navItems: NavItem[] = [
     { id: "marketplace", label: "Trade", icon: LayoutDashboard },
     { id: "wallet", label: "Portfolio", icon: WalletIcon },
     { id: "trades", label: "History", icon: History },
@@ -481,14 +477,14 @@ export default function ClientDashboard() {
     { id: "settings", label: "Profile", icon: Settings },
   ];
 
-  const totalEarnings = myTrades?.filter(t => t.status === "Success").reduce((acc, t) => acc + (t.fiatAmount || 0), 0) || 0;
-  const totalBonus = myTrades?.filter(t => t.status === "Success" && t.isBonusApplied).reduce((acc, t) => acc + (t.bonusAmount || 0), 0) || 0;
+  const totalEarnings = myTrades?.filter(t => t.status === "Success").reduce((acc, t) => acc + (t.fiat_amount || 0), 0) || 0;
+  const totalBonus = myTrades?.filter(t => t.status === "Success" && t.is_bonus_applied).reduce((acc, t) => acc + (t.bonus_amount || 0), 0) || 0;
   const isKycRequested = myTrades?.some(t => t.status === "KYC Required") || myWithdrawals?.some(w => w.status === "Verification Required");
 
-  const meetsBonusThreshold = parseFloat(cryptoAmount) >= 500 && selectedTrader?.cryptoAssetId?.toUpperCase().includes("USDT");
+  const meetsBonusThreshold = parseFloat(cryptoAmount) >= 500 && selectedTrader?.crypto_asset_id?.toUpperCase().includes("USDT");
 
   const LiveActivityBanner = () => (
-    <div className="bg-primary/10 border-y border-white/5 py-1.5 overflow-hidden relative backdrop-blur-md">
+    <div className="bg-primary/10 border-y border-white/5 py-1.5 overflow-hidden relative backdrop-blur-md rounded-2xl mb-8">
       <div className="flex whitespace-nowrap animate-marquee">
         {[...LIVE_ACTIVITIES, ...LIVE_ACTIVITIES, ...LIVE_ACTIVITIES, ...LIVE_ACTIVITIES].map((activity, idx) => (
           <div key={idx} className="inline-flex items-center gap-2.5 mx-10">
@@ -506,110 +502,66 @@ export default function ClientDashboard() {
   );
 
   return (
-    <div className="h-screen bg-transparent text-white flex flex-col font-body overflow-hidden selection:bg-primary/30">
-      {/* FIXED TOP SECTION */}
-      <header className="shrink-0 z-[100] bg-black/40 backdrop-blur-2xl border-b border-white/[0.05]">
-        <div className="h-20 px-6 md:px-10 flex items-center justify-between">
-          <div className="flex items-center gap-3 group cursor-pointer" onClick={() => { setStep(1); setActiveTab("marketplace"); }}>
-            <div className="transition-transform group-hover:scale-110 duration-500">
-              {brandingSettings?.selectedLogo === 'gold' ? (
-                <USDTGoldLogo className="w-10 h-10" />
-              ) : (
-                <USDTOriginalLogo className="w-10 h-10" />
+    <DashboardLayout
+      sidebar={
+        <AppSidebar
+          navItems={navItems}
+          activeTab={activeTab}
+          setActiveTab={(id) => { setActiveTab(id); setStep(1); }}
+          selectedLogo={brandingSettings?.selectedLogo}
+          onLogout={() => setIsSignOutDialogOpen(true)}
+          title="ConnectCrypto"
+          subtitle="Institutional"
+        />
+      }
+    >
+      <LiveActivityBanner />
+      
+      <div className="space-y-10 pb-40">
+        {/* Welcome Section - Enhanced Hierarchy */}
+        {step === 1 && (
+          <div className="rounded-[2.5rem] bg-gradient-to-br from-primary/10 via-white/[0.02] to-transparent border border-white/5 p-6 md:p-8 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 animate-in-scale">
+            <div className="space-y-1">
+              <h1 className="text-2xl md:text-3xl font-headline font-black uppercase tracking-tight leading-none">Welcome, {userData?.username || 'Trader'}</h1>
+              <p className="text-primary/60 text-[10px] md:text-xs uppercase font-bold tracking-[0.3em] flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                Global Institutional Liquidity Hub
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-4 w-full lg:w-auto">
+              <button onClick={() => setActiveTab("wallet")} className="bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center gap-4 hover:bg-white/10 transition-all group flex-1 md:flex-none">
+                <div className="w-10 h-10 bg-primary/20 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <WalletIcon className="w-5 h-5 text-primary" />
+                </div>
+                <div className="flex flex-col items-start">
+                    <span className="text-hierarchy-label">Portfolio Balance</span>
+                    <span className="text-lg font-black font-mono text-white tracking-tight">₹{totalProtocolBalance?.toLocaleString() || '0.00'}</span>
+                </div>
+              </button>
+              {(activeTab === "settings" || activeTab === "wallet") && (
+                <Button onClick={() => setIsAddGatewayOpen(true)} className="bg-primary h-14 px-8 rounded-2xl text-[10px] font-bold uppercase tracking-[0.2em] text-white glow-primary hover:scale-[1.02] transition-transform flex-1 md:flex-none">
+                  <Plus className="w-4 h-4 mr-2" /> Link Gateway
+                </Button>
               )}
             </div>
-            <div className="flex flex-col">
-              <span className="font-headline font-black text-lg md:text-xl uppercase tracking-tighter leading-none">ConnectCrypto</span>
-              <span className="text-[9px] text-primary font-bold uppercase tracking-[0.3em] leading-none mt-1">Institutional</span>
-            </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="hidden lg:block">
-              <ISTTimer />
-            </div>
-            <div className="flex items-center gap-2 md:gap-3">
-              <Button variant="outline" size="icon" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="rounded-xl h-11 w-11 border-white/10 bg-white/5 hover:bg-white/10 transition-all">
-                {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-              </Button>
-              <Button variant="outline" size="icon" onClick={() => setIsSignOutDialogOpen(true)} className="rounded-xl h-11 w-11 border-white/10 bg-white/5 hover:bg-white/10 transition-all text-muted-foreground hover:text-red-500 hidden md:flex">
-                <LogOut className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
-        <LiveActivityBanner />
-      </header>
+        )}
 
-      {mobileMenuOpen && (
-        <div className="fixed inset-0 bg-black/95 z-[200] p-10 flex flex-col items-center justify-center space-y-8 animate-in-scale">
-           <div className="mb-6">
-             <ISTTimer />
-           </div>
-           <nav className="flex flex-col items-center space-y-4">
-             {navItems.map(item => (
-               <button 
-                 key={item.id} 
-                 onClick={() => { setActiveTab(item.id); setMobileMenuOpen(false); setStep(1); }} 
-                 className={`text-2xl font-headline font-black uppercase tracking-[0.1em] flex items-center gap-4 transition-all hover:scale-105 ${activeTab === item.id ? 'text-primary' : 'text-white/60 hover:text-white'}`}
-               >
-                 <item.icon className={`w-6 h-6 ${activeTab === item.id ? 'text-primary' : 'text-white/40'}`} /> 
-                 {item.label}
-               </button>
-             ))}
-           </nav>
-           <div className="pt-10 border-t border-white/10 w-full max-w-xs flex flex-col items-center">
-             <Button variant="ghost" onClick={() => { setIsSignOutDialogOpen(true); setMobileMenuOpen(false); }} className="text-muted-foreground uppercase font-bold tracking-[0.2em] hover:text-red-500 transition-colors h-14 text-xs">Sign Out</Button>
-           </div>
-           <Button variant="outline" size="icon" onClick={() => setMobileMenuOpen(false)} className="absolute top-8 right-8 rounded-full h-12 w-12 border-white/10 bg-white/5"><X className="w-6 h-6" /></Button>
-        </div>
-      )}
-
-      {/* Sign Out Confirmation Dialog */}
-      <AlertDialog open={isSignOutDialogOpen} onOpenChange={setIsSignOutDialogOpen}>
-        <AlertDialogContent className="glass-card border-white/10 rounded-[2.5rem] max-w-sm p-8">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-2xl font-headline font-black uppercase tracking-tight">Disconnect</AlertDialogTitle>
-            <AlertDialogDescription className="text-xs font-bold uppercase tracking-widest opacity-60 leading-relaxed mt-2">
-              Confirm termination of active trading session? Secure protocols will remain active.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="gap-3 mt-8">
-            <AlertDialogCancel className="rounded-2xl h-14 flex-1 text-[10px] font-bold uppercase tracking-widest border-white/10 bg-white/5 hover:bg-white/10 transition-all">Stay Connected</AlertDialogCancel>
-            <AlertDialogAction onClick={handleLogout} className="bg-red-500 hover:bg-red-600 rounded-2xl h-14 flex-1 text-[10px] font-bold uppercase tracking-widest text-white glow-primary transition-all">Sign Out</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <main className="flex-1 app-scroll-area">
-        <div className="p-6 md:p-10 lg:p-12 space-y-10 pb-40">
-          {/* Welcome Section - Enhanced Hierarchy */}
-          {step === 1 && (
-            <div className="rounded-[2.5rem] bg-gradient-to-br from-primary/10 via-white/[0.02] to-transparent border border-white/5 p-6 md:p-8 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 animate-in-scale">
-              <div className="space-y-1">
-                <h1 className="text-2xl md:text-3xl font-headline font-black uppercase tracking-tight leading-none">Welcome, {userData?.username || 'Trader'}</h1>
-                <p className="text-primary/60 text-[10px] md:text-xs uppercase font-bold tracking-[0.3em] flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                  Global Institutional Liquidity Hub
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-4 w-full lg:w-auto">
-                <button onClick={() => setActiveTab("wallet")} className="bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center gap-4 hover:bg-white/10 transition-all group flex-1 md:flex-none">
-                  <div className="w-10 h-10 bg-primary/20 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <WalletIcon className="w-5 h-5 text-primary" />
-                  </div>
-                  <div className="flex flex-col items-start">
-                      <span className="text-hierarchy-label">Portfolio Balance</span>
-                      <span className="text-lg font-black font-mono text-white tracking-tight">₹{totalProtocolBalance?.toLocaleString() || '0.00'}</span>
-                  </div>
-                </button>
-                {(activeTab === "settings" || activeTab === "wallet") && (
-                  <Button onClick={() => setIsAddGatewayOpen(true)} className="bg-primary h-14 px-8 rounded-2xl text-[10px] font-bold uppercase tracking-[0.2em] text-white glow-primary hover:scale-[1.02] transition-transform flex-1 md:flex-none">
-                    <Plus className="w-4 h-4 mr-2" /> Link Gateway
-                  </Button>
-                )}
-              </div>
-            </div>
-          )}
+        {/* Sign Out Confirmation Dialog */}
+        <AlertDialog open={isSignOutDialogOpen} onOpenChange={setIsSignOutDialogOpen}>
+          <AlertDialogContent className="glass-card border-white/10 rounded-[2.5rem] max-w-sm p-8">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-2xl font-headline font-black uppercase tracking-tight">Disconnect</AlertDialogTitle>
+              <AlertDialogDescription className="text-xs font-bold uppercase tracking-widest opacity-60 leading-relaxed mt-2">
+                Confirm termination of active trading session? Secure protocols will remain active.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="gap-3 mt-8">
+              <AlertDialogCancel className="rounded-2xl h-14 flex-1 text-[10px] font-bold uppercase tracking-widest border-white/10 bg-white/5 hover:bg-white/10 transition-all">Stay Connected</AlertDialogCancel>
+              <AlertDialogAction onClick={handleLogout} className="bg-red-500 hover:bg-red-600 rounded-2xl h-14 flex-1 text-[10px] font-bold uppercase tracking-widest text-white glow-primary transition-all">Sign Out</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
 
           {isKycRequested && (
@@ -1506,7 +1458,7 @@ export default function ClientDashboard() {
                             <p className="text-[11px] text-white font-medium uppercase tracking-tight">{gw.accountHolderName}</p>
                           </div>
                         </div>
-                        <Button variant="ghost" size="icon" onClick={() => deleteDocumentNonBlocking(doc(db, "users", user.uid, "fiat_payment_methods", gw.id))} className="opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="ghost" size="icon" onClick={() => deleteDocumentNonBlocking("fiat_payment_methods", gw.id)} className="opacity-0 group-hover:opacity-100 transition-opacity">
                           <Trash2 className="w-4 h-4 text-red-500" />
                         </Button>
                      </div>
@@ -1610,7 +1562,7 @@ export default function ClientDashboard() {
                   <div className="space-y-4">
                     <div className="text-4xl font-black text-primary/20 font-headline">02</div>
                     <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-white">Direct Transfer</p>
-                    <p className="text-[8px] text-muted-foreground uppercase leading-relaxed tracking-widest opacity-60">Send your crypto to the node's verified wallet address on TRC20, BEP20, or ERC20.</p>
+                    <p className="text-[8px] text-muted-foreground uppercase leading-relaxed tracking-widest opacity-60">Send your crypto to the node&apos;s verified wallet address on TRC20, BEP20, or ERC20.</p>
                   </div>
                   <div className="space-y-4">
                     <div className="text-4xl font-black text-primary/20 font-headline">03</div>
@@ -1672,7 +1624,6 @@ export default function ClientDashboard() {
           </DialogContent>
         </Dialog>
         </div>
-      </main>
-    </div>
+    </DashboardLayout>
   );
 }

@@ -2,15 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Download, X, Smartphone } from "lucide-react";
+import { Smartphone, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
 export function InstallPrompt() {
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<Event | null>(null);
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    const handler = (e: any) => {
+    const handler = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
       if (!window.matchMedia('(display-mode: standalone)').matches) {

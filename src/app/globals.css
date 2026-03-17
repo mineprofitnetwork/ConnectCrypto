@@ -34,22 +34,17 @@
 
 @layer base {
   html, body {
-    @apply h-full w-full overflow-hidden;
-    /* Adaptive font scaling: scales between 14px and 18px based on viewport width */
-    font-size: clamp(14px, 1.2vw, 18px);
+    @apply h-full w-full;
+    /* Desktop-optimized font scaling: even smaller base for a broader view */
+    font-size: clamp(12px, 0.8vw, 15px);
   }
   
   body {
-    @apply bg-background text-foreground font-body antialiased select-none;
+    @apply bg-background text-foreground font-body antialiased select-none overflow-x-hidden;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
     font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
     letter-spacing: -0.01em;
-    /* Fixed viewport experience: no body scrolling */
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    min-height: 100vh;
   }
   
   * {
@@ -59,16 +54,16 @@
   h1, h2, h3, h4, h5, h6 {
     @apply font-headline tracking-tight font-bold;
   }
-  h1 { @apply text-3xl md:text-4xl; }
-  h2 { @apply text-2xl md:text-3xl; }
-  h3 { @apply text-xl md:text-2xl; }
+  h1 { @apply text-2xl md:text-3xl lg:text-4xl; }
+  h2 { @apply text-xl md:text-2xl lg:text-3xl; }
+  h3 { @apply text-lg md:text-xl lg:text-2xl; }
 }
 
 @layer components {
   .glass-card {
     @apply bg-white/[0.03] backdrop-blur-3xl border border-white/[0.08] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] transition-all duration-300;
-    /* Responsive padding: smaller on mobile, larger on ultra-wide */
-    padding: clamp(1.25rem, 2vw, 2.5rem);
+    /* Responsive padding: more compact on desktop */
+    padding: clamp(1rem, 1.5vw, 2rem);
   }
 
   .glass-card-hover {

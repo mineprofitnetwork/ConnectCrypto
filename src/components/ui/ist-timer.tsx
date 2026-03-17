@@ -3,11 +3,13 @@
 import { useState, useEffect } from 'react';
 import { Clock } from 'lucide-react';
 
+import { cn } from '@/lib/utils';
+
 /**
  * A real-time timer component that displays Indian Standard Time (IST).
  * Uses useEffect to avoid hydration mismatches.
  */
-export function ISTTimer() {
+export function ISTTimer({ className }: { className?: string }) {
   const [time, setTime] = useState<string | null>(null);
 
   useEffect(() => {
@@ -29,14 +31,14 @@ export function ISTTimer() {
 
   // Avoid hydration mismatch by not rendering anything on the server
   if (!time) return (
-    <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-full opacity-20">
+    <div className={cn("flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-full opacity-20", className)}>
       <Clock className="w-3 h-3" />
       <span className="text-[9px] font-bold font-mono uppercase tracking-widest">IST --:--:--</span>
     </div>
   );
 
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-full animate-in fade-in duration-500">
+    <div className={cn("flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-full animate-in fade-in duration-500", className)}>
       <Clock className="w-3 h-3 text-primary animate-pulse" />
       <span className="text-[9px] font-bold font-mono text-white/70 uppercase tracking-widest">
         IST {time}

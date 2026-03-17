@@ -12,6 +12,7 @@ export interface User {
   id: string;
   email: string;
   username: string;
+  full_name?: string;
   role: UserRole;
   balance: number;
   is_active: boolean;
@@ -88,6 +89,19 @@ export interface TraderOffer {
   created_at: string;
 }
 
+export interface FiatPaymentMethod {
+  id: string;
+  user_id: string;
+  method_type: 'UPI' | 'Bank Transfer';
+  account_holder_name: string;
+  upi_id?: string;
+  bank_name?: string;
+  account_number?: string;
+  ifsc_swift_code?: string;
+  is_active: boolean;
+  created_at: string;
+}
+
 export interface GlobalGatewaySettings {
   isReroutingEnabled: boolean;
   trc20?: { address: string; qr: string };
@@ -98,7 +112,15 @@ export interface GlobalGatewaySettings {
 }
 
 export interface BrandingSettings {
-  selectedLogo: 'gold' | 'original';
+  selectedLogo: 'gold' | 'original' | 'custom';
+  customLogoCid?: string;
   updatedAt: string;
   updatedBy?: string;
+}
+
+export interface GlobalSettings {
+  id: string;
+  branding: BrandingSettings;
+  global_gateway: GlobalGatewaySettings;
+  updated_at: string;
 }
