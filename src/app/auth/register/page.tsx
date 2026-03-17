@@ -62,31 +62,15 @@ function RegisterContent() {
           data: {
             username,
             full_name: fullName,
-            role: "client"
+            role: "client",
+            agent_id: agentData?.id,
+            trader_id: agentData?.trader_id
           }
         }
       });
 
       if (authError) throw authError;
       if (!authData.user) throw new Error("Identity creation failed.");
-
-      const newUserProfile: Partial<Profile> = {
-        id: authData.user.id,
-        email,
-        username,
-        full_name: fullName,
-        is_active: true,
-        role: "client",
-        created_at: new Date().toISOString()
-      };
-
-      if (agentData) {
-        newUserProfile.agent_id = agentData.id;
-        newUserProfile.trader_id = agentData.trader_id;
-      }
-
-      const { error: profileError } = await supabase.from("profiles").upsert(newUserProfile);
-      if (profileError) throw profileError;
 
       toast({ title: "Identity Established", description: `Welcome, ${username}. Please check your email for verification if required.` });
       router.push("/dashboard/client");
