@@ -35,6 +35,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { 
   Dialog, 
@@ -527,7 +528,7 @@ export default function AgentDashboard() {
 
                     <div className="space-y-3">
                        <Label className="text-hierarchy-label ml-2">Additional Context / Instructions</Label>
-                       <textarea 
+                       <Textarea 
                           value={aiAdditionalContext}
                           onChange={(e) => setAiAdditionalContext(e.target.value)}
                           placeholder="e.g. Focus on the 0.5% commission rate or the high security of the node."
@@ -670,12 +671,12 @@ export default function AgentDashboard() {
                   </div>
                 </Card>
               ))}
-              <button onClick={() => setIsAddOfferOpen(true)} className="border-2 border-dashed border-white/10 rounded-[2.5rem] h-[220px] flex flex-col items-center justify-center gap-4 hover:border-primary/40 hover:bg-white/[0.02] transition-all group duration-500 animate-in-scale">
+              <Button onClick={() => setIsAddOfferOpen(true)} variant="ghost" className="border-2 border-dashed border-white/10 rounded-[2.5rem] h-[220px] w-full flex flex-col items-center justify-center gap-4 hover:border-primary/40 hover:bg-white/[0.02] transition-all group duration-500 animate-in-scale">
                  <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center border border-white/5 group-hover:scale-110 group-hover:bg-primary/10 group-hover:border-primary/20 transition-all duration-500">
                    <Plus className="w-8 h-8 text-muted-foreground group-hover:text-primary transition-colors" />
                  </div>
                  <span className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground group-hover:text-white transition-colors">Create Position</span>
-              </button>
+              </Button>
            </div>
         </div>
       ) : activeTab === "support" ? (
@@ -834,3 +835,5 @@ export default function AgentDashboard() {
     </DashboardLayout>
   );
 }
+
+

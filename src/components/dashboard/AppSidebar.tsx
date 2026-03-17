@@ -101,14 +101,15 @@ export function AppSidebar({
         {/* Navigation */}
         <nav className="flex-1 px-4 py-8 space-y-2 overflow-y-auto no-scrollbar">
           {navItems.map((item) => (
-            <button
+            <Button
               key={item.id}
+              variant="ghost"
               onClick={() => {
                 setActiveTab(item.id);
                 setIsOpen(false);
               }}
               className={cn(
-                "w-full flex items-center gap-4 px-6 py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] transition-all group",
+                "w-full flex items-center justify-start gap-4 px-6 py-4 h-auto rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] transition-all group",
                 activeTab === item.id
                   ? "bg-primary text-white glow-primary"
                   : "text-white/40 hover:text-white hover:bg-white/5"
@@ -121,7 +122,7 @@ export function AppSidebar({
                 )}
               />
               {item.label}
-            </button>
+            </Button>
           ))}
         </nav>
 

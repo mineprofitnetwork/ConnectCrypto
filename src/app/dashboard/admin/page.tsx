@@ -1,5 +1,6 @@
-
 "use client";
+
+import { cn } from "@/lib/utils";
 
 import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -7,7 +8,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { 
   Dialog,
@@ -392,7 +401,7 @@ export default function AdminDashboard() {
   };
 
   const handleToggleStatus = async (u: User) => {
-    const newActiveState = !u.isActive;
+    const newActiveState = !u.is_active;
     const { error } = await supabase.from("profiles").update({ is_active: newActiveState }).eq("id", u.id);
     if (!error) {
       toast({ title: "Protocol Update", description: `${u.username} status toggled.` });
@@ -745,8 +754,8 @@ export default function AdminDashboard() {
                               : '--'}
                           </TableCell>
                           <TableCell>
-                            <Badge className={cn("px-4 py-1.5 text-[9px] font-black uppercase rounded-full border-none transition-all", u.isActive ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500')}>
-                              {u.isActive ? 'Verified' : 'Locked'}
+                            <Badge className={cn("px-4 py-1.5 text-[9px] font-black uppercase rounded-full border-none transition-all", u.is_active ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500')}>
+                              {u.is_active ? 'Verified' : 'Locked'}
                             </Badge>
                           </TableCell>
                           <TableCell className="px-12 text-right">
@@ -925,9 +934,9 @@ export default function AdminDashboard() {
                           <TableCell className="font-black text-primary uppercase text-base italic group-hover:scale-110 transition-transform origin-left">₹{w.amount?.toLocaleString()}</TableCell>
                           <TableCell className="text-[11px] font-black text-white/40 uppercase tracking-[0.1em] group-hover:text-white/70 transition-colors">
                             <div className="flex flex-col gap-1.5">
-                              <span className="font-black italic">{w.gatewayDetails?.type} • {w.gatewayDetails?.name}</span>
+                              <span className="font-black italic">{w.gateway_details?.type} • {w.gateway_details?.name}</span>
                               <span className="text-[10px] text-primary/40 font-mono tracking-tight bg-primary/5 px-2 py-1 rounded-md border border-primary/10 w-fit">
-                                {w.gatewayDetails?.detail}
+                                {w.gateway_details?.detail}
                               </span>
                             </div>
                           </TableCell>
@@ -992,9 +1001,9 @@ export default function AdminDashboard() {
                     <div className="space-y-4 relative z-10">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex items-center gap-4 min-w-0 flex-1">
-                          {off.iconCid ? (
+                          {off.icon_cid ? (
                             <div className="relative w-14 h-14 rounded-2xl overflow-hidden border border-white/10 bg-white/5 shadow-2xl shrink-0 group-hover/card:scale-110 transition-transform duration-500">
-                              <Image src={`https://ipfs.io/ipfs/${off.iconCid}`} alt={off.cryptoAssetId} fill className="object-cover opacity-80 group-hover/card:opacity-100 transition-opacity" unoptimized />
+                              <Image src={`https://ipfs.io/ipfs/${off.icon_cid}`} alt={off.crypto_asset_id} fill className="object-cover opacity-80 group-hover/card:opacity-100 transition-opacity" unoptimized />
                             </div>
                           ) : (
                             <div className="w-14 h-14 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center shrink-0">
@@ -1003,10 +1012,10 @@ export default function AdminDashboard() {
                           )}
                           <div className="flex flex-col min-w-0 flex-1">
                             <p className="text-[9px] text-primary font-black uppercase tracking-[0.2em] truncate mb-1">
-                              {off.displayName || off.traderUsername || 'Verified Node'}
+                              {off.display_name || off.trader_username || 'Verified Node'}
                             </p>
                             <p className="font-headline font-black text-xl uppercase tracking-tighter text-white leading-none truncate italic">
-                              {off.cryptoAssetId}
+                              {off.crypto_asset_id}
                             </p>
                           </div>
                         </div>
@@ -1028,21 +1037,21 @@ export default function AdminDashboard() {
                     <div className="pt-6 border-t border-white/[0.05] flex justify-between items-end relative z-10">
                       <div className="flex flex-col gap-1">
                         <span className="text-[8px] text-white/20 font-black uppercase tracking-[0.3em]">Fixed Rate</span>
-                        <p className="text-xl font-headline font-black text-primary leading-none italic">{off.fixedPricePerCrypto} <span className="text-[10px] opacity-40 not-italic tracking-normal ml-1">{off.fiatCurrency}</span></p>
+                        <p className="text-xl font-headline font-black text-primary leading-none italic">{off.fixed_price_per_crypto} <span className="text-[10px] opacity-40 not-italic tracking-normal ml-1">{off.fiat_currency}</span></p>
                       </div>
                       <Badge variant="outline" className="text-[8px] py-1 px-3 border-white/10 text-white/30 uppercase font-black tracking-widest rounded-lg bg-white/5">
                         {off.status || 'Active'}
                       </Badge>
                     </div>
                   </Card>
-                ))}
-                <button onClick={() => { resetOfferForm(); setIsAddOfferOpen(true); }} className="border-2 border-dashed border-white/10 rounded-[2rem] min-h-[220px] flex flex-col items-center justify-center gap-4 hover:border-primary/40 hover:bg-primary/5 transition-all group shadow-2xl">
-                   <div className="w-16 h-16 rounded-[1.5rem] bg-white/5 flex items-center justify-center group-hover:bg-primary/20 group-hover:scale-110 transition-all duration-500">
-                     <Plus className="w-8 h-8 text-white/20 group-hover:text-primary transition-colors" />
-                   </div>
-                   <span className="text-[10px] font-black uppercase tracking-[0.4em] text-white/20 group-hover:text-white transition-colors">Global Position</span>
-                </button>
-              </div>
+              ))}
+              <Button onClick={() => { resetOfferForm(); setIsAddOfferOpen(true); }} variant="ghost" className="border-2 border-dashed border-white/10 rounded-[2rem] min-h-[220px] w-full flex flex-col items-center justify-center gap-4 hover:border-primary/40 hover:bg-primary/5 transition-all group shadow-2xl">
+                 <div className="w-16 h-16 rounded-[1.5rem] bg-white/5 flex items-center justify-center group-hover:bg-primary/20 group-hover:scale-110 transition-all duration-500">
+                   <Plus className="w-8 h-8 text-white/20 group-hover:text-primary transition-colors" />
+                 </div>
+                 <span className="text-[10px] font-black uppercase tracking-[0.4em] text-white/20 group-hover:text-white transition-colors">Global Position</span>
+              </Button>
+            </div>
             </TabsContent>
 
             <TabsContent value="branding" className="mt-0 outline-none">
@@ -1234,12 +1243,18 @@ export default function AdminDashboard() {
               {!editingOfferId && (
                 <div className="space-y-2">
                   <Label className="text-[9px] uppercase font-bold opacity-50 ml-1">Assign to Trader</Label>
-                  <select className="w-full bg-black/60 border border-white/10 rounded-xl h-12 px-4 text-sm text-white outline-none" value={selectedTraderId} onChange={e => setSelectedTraderId(e.target.value)}>
-                    <option value="">Select a Trader Node</option>
-                    {traders.map(t => (
-                      <option key={t.id} value={t.id}>{t.username} ({t.email})</option>
-                    ))}
-                  </select>
+                  <Select value={selectedTraderId} onValueChange={setSelectedTraderId}>
+                    <SelectTrigger className="w-full bg-black/60 border border-white/10 rounded-xl h-12 px-4 text-sm text-white outline-none">
+                      <SelectValue placeholder="Select a Trader Node" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-black/95 border-white/10 text-white">
+                      {traders.map(t => (
+                        <SelectItem key={t.id} value={t.id} className="text-[10px] font-black uppercase tracking-widest focus:bg-primary focus:text-white">
+                          {t.username} ({t.email})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
               <div className="grid grid-cols-2 gap-4">
@@ -1251,10 +1266,11 @@ export default function AdminDashboard() {
                   <Label className="text-[9px] uppercase font-bold opacity-50 ml-1">Network Assets</Label>
                   <div className="grid grid-cols-3 gap-2">
                     {["TRC20", "BEP20", "ERC20"].map((net) => (
-                      <button
+                      <Button
                         key={net}
                         type="button"
                         onClick={() => toggleNetwork(net)}
+                        variant={offerNetwork.includes(net) ? "default" : "outline"}
                         className={`h-12 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition-all ${
                           offerNetwork.includes(net) 
                             ? 'bg-primary border-primary text-white glow-primary' 
@@ -1262,7 +1278,7 @@ export default function AdminDashboard() {
                         }`}
                       >
                         {net}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
@@ -1290,7 +1306,7 @@ export default function AdminDashboard() {
               </div>
               <div className="space-y-2">
                 <Label className="text-[9px] uppercase font-bold opacity-50 ml-1">Terms & Description</Label>
-                <textarea value={offerDescription} onChange={e => setOfferDescription(e.target.value)} placeholder="Add your trading terms..." className="w-full bg-white/5 border border-white/10 rounded-xl min-h-[100px] p-4 text-sm focus:ring-primary/50 outline-none" />
+                <Textarea value={offerDescription} onChange={e => setOfferDescription(e.target.value)} placeholder="Add your trading terms..." className="w-full bg-white/5 border border-white/10 rounded-xl min-h-[100px] p-4 text-sm focus:ring-primary/50 outline-none" />
               </div>
             </div>
             <DialogFooter><Button onClick={handleOpenPosition} className="w-full h-14 bg-primary rounded-xl font-bold uppercase tracking-widest text-[10px] text-white glow-primary">Confirm & Publish</Button></DialogFooter>
@@ -1339,14 +1355,14 @@ export default function AdminDashboard() {
               <div className="space-y-2">
                 <Label className="text-[9px] font-bold uppercase opacity-50 ml-1">Identity Status</Label>
                 <div className="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
-                  <span className="text-[10px] font-bold uppercase flex-1">{editingUser?.isActive ? "Identity Active" : "Identity Locked"}</span>
+                  <span className="text-[10px] font-bold uppercase flex-1">{editingUser?.is_active ? "Identity Active" : "Identity Locked"}</span>
                   <Button 
                     variant="ghost" 
                     size="sm" 
                     onClick={() => editingUser && handleToggleStatus(editingUser)}
-                    className={`h-8 px-4 rounded-lg text-[8px] font-bold uppercase ${editingUser?.isActive ? 'text-red-500 hover:bg-red-500/10' : 'text-green-500 hover:bg-green-500/10'}`}
+                    className={`h-8 px-4 rounded-lg text-[8px] font-bold uppercase ${editingUser?.is_active ? 'text-red-500 hover:bg-red-500/10' : 'text-green-500 hover:bg-green-500/10'}`}
                   >
-                    {editingUser?.isActive ? "Lock Node" : "Unlock Node"}
+                    {editingUser?.is_active ? "Lock Node" : "Unlock Node"}
                   </Button>
                 </div>
               </div>
@@ -1568,3 +1584,6 @@ export default function AdminDashboard() {
   </TooltipProvider>
   );
 }
+
+
+

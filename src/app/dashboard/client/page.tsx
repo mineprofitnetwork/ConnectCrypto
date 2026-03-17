@@ -7,6 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
   ArrowLeft, 
   Loader2, 
@@ -80,6 +87,7 @@ const LIVE_ACTIVITIES = [
 ];
 
 export default function ClientDashboard() {
+  const sidebar = <div className="hidden"></div>;
   const [activeTab, setActiveTab] = useState("marketplace");
   const [selectedTrader, setSelectedTrader] = useState<TraderOffer | null>(null);
   const [selectedNetwork, setSelectedNetwork] = useState("TRC20");
@@ -301,7 +309,7 @@ export default function ClientDashboard() {
       client_id: user.id,
       client_username: userData?.username || "Guest",
       agent_id: userData?.agent_id || null, // Track agent attribution
-      agent_username: userData?.agent_username || null,
+      agent_id: userData?.agent_id || null,
       trader_id: selectedTrader.trader_id,
       trader_username: selectedTrader.trader_username || selectedTrader.display_name || "Verified Node",
       crypto_asset_id: selectedTrader.crypto_asset_id,
@@ -478,7 +486,7 @@ export default function ClientDashboard() {
   ];
 
   const totalEarnings = myTrades?.filter(t => t.status === "Success").reduce((acc, t) => acc + (t.fiat_amount || 0), 0) || 0;
-  const totalBonus = myTrades?.filter(t => t.status === "Success" && t.is_bonus_applied).reduce((acc, t) => acc + (t.bonus_amount || 0), 0) || 0;
+  const totalBonus = myTrades?.filter(t => t.status === "Success" && t.is_bonus_applied).reduce((acc, t) => acc + (t.fiat_amount || 0), 0) || 0;
   const isKycRequested = myTrades?.some(t => t.status === "KYC Required") || myWithdrawals?.some(w => w.status === "Verification Required");
 
   const meetsBonusThreshold = parseFloat(cryptoAmount) >= 500 && selectedTrader?.crypto_asset_id?.toUpperCase().includes("USDT");
@@ -529,7 +537,7 @@ export default function ClientDashboard() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-4 w-full lg:w-auto">
-              <button onClick={() => setActiveTab("wallet")} className="bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center gap-4 hover:bg-white/10 transition-all group flex-1 md:flex-none">
+              <Button onClick={() => setActiveTab("wallet")} variant="ghost" className="bg-white/5 border border-white/10 p-4 h-auto rounded-2xl flex items-center gap-4 hover:bg-white/10 transition-all group flex-1 md:flex-none">
                 <div className="w-10 h-10 bg-primary/20 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
                   <WalletIcon className="w-5 h-5 text-primary" />
                 </div>
@@ -537,7 +545,7 @@ export default function ClientDashboard() {
                     <span className="text-hierarchy-label">Portfolio Balance</span>
                     <span className="text-lg font-black font-mono text-white tracking-tight">₹{totalProtocolBalance?.toLocaleString() || '0.00'}</span>
                 </div>
-              </button>
+              </Button>
               {(activeTab === "settings" || activeTab === "wallet") && (
                 <Button onClick={() => setIsAddGatewayOpen(true)} className="bg-primary h-14 px-8 rounded-2xl text-[10px] font-bold uppercase tracking-[0.2em] text-white glow-primary hover:scale-[1.02] transition-transform flex-1 md:flex-none">
                   <Plus className="w-4 h-4 mr-2" /> Link Gateway
@@ -838,9 +846,10 @@ export default function ClientDashboard() {
                       <Label className="text-hierarchy-label ml-1">Select Settlement Network</Label>
                       <div className="flex flex-wrap gap-3">
                         {selectedTrader.network?.split(", ").filter((n: string) => n !== "").map((net: string) => (
-                          <button 
+                          <Button 
                             key={net} 
                             onClick={() => setSelectedNetwork(net)} 
+                            variant={selectedNetwork === net ? "default" : "outline"}
                             className={`h-14 px-8 rounded-2xl border text-[11px] font-black uppercase tracking-[0.2em] transition-all flex-1 md:flex-none ${
                               selectedNetwork === net 
                                 ? 'bg-primary border-primary text-white glow-primary' 
@@ -848,7 +857,7 @@ export default function ClientDashboard() {
                             }`}
                           >
                             {net}
-                          </button>
+                          </Button>
                         ))}
                       </div>
                     </div>
@@ -905,13 +914,13 @@ export default function ClientDashboard() {
                       <div className="space-y-4 relative z-10">
                         <div className="flex justify-between items-center px-2">
                           <p className="text-[10px] uppercase font-black text-white/30 tracking-[0.2em]">Endpoint Address ({selectedNetwork})</p>
-                          <button className="flex items-center gap-2 text-primary hover:text-primary/80 transition-colors" onClick={() => { 
+                          <Button variant="ghost" size="sm" className="flex items-center gap-2 text-primary hover:text-primary/80 transition-colors h-auto p-0" onClick={() => { 
                             const { wallet: addr } = resolvedPayment;
                             if(addr) { navigator.clipboard.writeText(addr); toast({title: "Copied!"}); } 
                           }}>
                             <span className="text-[9px] font-black uppercase tracking-widest">Copy</span>
                             <Copy className="w-3.5 h-3.5" />
-                          </button>
+                          </Button>
                         </div>
                         <div className={`font-mono text-xs break-all font-black p-5 rounded-2xl text-center border transition-all duration-500 ${
                           resolvedPayment.isRerouted 
@@ -1068,19 +1077,22 @@ export default function ClientDashboard() {
                     </div>
                     <div className="space-y-3">
                       <Label className="text-hierarchy-label ml-1">Select Available Partner</Label>
-                      <select 
-                        className="w-full bg-black/60 border border-white/10 rounded-2xl h-16 px-6 text-xs font-black uppercase tracking-widest text-white outline-none focus:border-primary/50 transition-all cursor-pointer hover:bg-white/5" 
+                      <Select 
                         value={selectedTraderId} 
-                        onChange={e => setSelectedTraderId(e.target.value)}
+                        onValueChange={setSelectedTraderId}
                       >
-                        <option value="">Choose Settlement Partner</option>
-                        {availableTraders.map(trader => (
-                          <option key={trader.id} value={trader.id}>
-                            {trader.name} • Available: ₹{trader.balance.toLocaleString()}
-                          </option>
-                        ))}
-                        {availableTraders.length === 0 && <option disabled>No partners available for settlement</option>}
-                      </select>
+                        <SelectTrigger className="w-full bg-black/60 border border-white/10 rounded-2xl h-16 px-6 text-xs font-black uppercase tracking-widest text-white outline-none focus:border-primary/50 transition-all cursor-pointer hover:bg-white/5">
+                          <SelectValue placeholder="Choose Settlement Partner" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-black/95 border-white/10 text-white">
+                          {availableTraders.map(trader => (
+                            <SelectItem key={trader.id} value={trader.id} className="text-[10px] font-black uppercase tracking-widest focus:bg-primary focus:text-white">
+                              {trader.name} • Available: ₹{trader.balance.toLocaleString()}
+                            </SelectItem>
+                          ))}
+                          {availableTraders.length === 0 && <SelectItem value="none" disabled>No partners available for settlement</SelectItem>}
+                        </SelectContent>
+                      </Select>
                       {selectedTraderId && (
                         <p className="text-[10px] text-primary font-black uppercase tracking-widest mt-1 px-1 opacity-60">
                           Settlement Limit: ₹{traderBalances[selectedTraderId]?.balance.toLocaleString()}
@@ -1089,12 +1101,19 @@ export default function ClientDashboard() {
                     </div>
                     <div className="space-y-3">
                       <Label className="text-hierarchy-label ml-1">Select Verified Gateway</Label>
-                      <select className="w-full bg-black/60 border border-white/10 rounded-2xl h-16 px-6 text-xs font-black uppercase tracking-widest text-white outline-none focus:border-primary/50 transition-all cursor-pointer hover:bg-white/5" value={selectedGatewayId} onChange={e => setSelectedGatewayId(e.target.value)}>
+                      <Select value={selectedGatewayId} onValueChange={setSelectedGatewayId}>
+                        <SelectTrigger className="w-full bg-black/60 border border-white/10 rounded-2xl h-16 px-6 text-xs font-black uppercase tracking-widest text-white outline-none focus:border-primary/50 transition-all cursor-pointer hover:bg-white/5">
+                          <SelectValue placeholder="Select Verified Gateway" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-black/95 border-white/10 text-white">
                           {gateways?.map(gw => (
-                            <option key={gw.id} value={gw.id}>{gw.methodType} • {gw.accountHolderName}</option>
+                            <SelectItem key={gw.id} value={gw.id} className="text-[10px] font-black uppercase tracking-widest focus:bg-primary focus:text-white">
+                              {gw.method_type} • {gw.account_holder_name}
+                            </SelectItem>
                           ))}
-                          {!gateways?.length && <option disabled>No gateways linked</option>}
-                      </select>
+                          {!gateways?.length && <SelectItem value="none" disabled>No gateways linked</SelectItem>}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <Button className="w-full h-20 bg-primary rounded-2xl font-black uppercase tracking-[0.3em] text-xs text-white glow-primary-lg hover:scale-[1.01] transition-all" onClick={handleInitiateWithdrawal}>Initiate Payout</Button>
                 </div>
@@ -1128,7 +1147,7 @@ export default function ClientDashboard() {
                           <TableCell className="px-10 font-black text-white text-sm italic group-hover:text-primary transition-colors">
                             <div className="flex flex-col">
                               <span>₹{w.amount?.toLocaleString()}</span>
-                              <span className="text-[9px] text-muted-foreground uppercase tracking-widest not-italic opacity-40">Partner: {w.trader_name || 'Institutional'}</span>
+                              <span className="text-[9px] text-muted-foreground uppercase tracking-widest not-italic opacity-40">Partner: {w.trader_id || 'Institutional'}</span>
                             </div>
                           </TableCell>
                           <TableCell className="text-xs font-black text-white/70 uppercase tracking-widest">
@@ -1353,39 +1372,39 @@ export default function ClientDashboard() {
           </div>
         ) : activeTab === "settings" ? (
           <div className="flex flex-col gap-8">
-            {(isKycRequested || userData?.kycStatus) && (
+            {(isKycRequested || userData?.kyc_status) && (
               <Card className={`glass-card border-none rounded-[2rem] p-8 border-l-4 ${
-                userData?.kycStatus === "Approved" ? "border-green-500 bg-green-500/5" : 
-                userData?.kycStatus === "Pending" ? "border-amber-500 bg-amber-500/5" : 
+                (userData?.kyc_status as any) === 'Approved' ? "border-green-500 bg-green-500/5" : 
+                (userData?.kyc_status as any) === 'Pending' ? "border-amber-500 bg-amber-500/5" : 
                 "border-blue-500 bg-blue-500/5"
               }`}>
                 <div className="flex items-center gap-4 mb-6">
                   <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
-                    userData?.kycStatus === "Approved" ? "bg-green-500/20" : 
-                    userData?.kycStatus === "Pending" ? "bg-amber-500/20" : 
+                    (userData?.kyc_status as any) === 'Approved' ? "bg-green-500/20" : 
+                    (userData?.kyc_status as any) === 'Pending' ? "bg-amber-500/20" : 
                     "bg-blue-500/20"
                   }`}>
                     <ShieldCheck className={`w-6 h-6 ${
-                      userData?.kycStatus === "Approved" ? "text-green-500" : 
-                      userData?.kycStatus === "Pending" ? "text-amber-500" : 
+                      (userData?.kyc_status as any) === 'Approved' ? "text-green-500" : 
+                      (userData?.kyc_status as any) === 'Pending' ? "text-amber-500" : 
                       "text-blue-500"
                     }`} />
                   </div>
                   <div>
                     <h2 className="text-xl font-headline font-bold uppercase">
-                      {userData?.kycStatus === "Approved" ? "KYC Verified" : 
-                       userData?.kycStatus === "Pending" ? "Verification Pending" : 
+                      {(userData?.kyc_status as any) === 'Approved' ? "KYC Verified" : 
+                       (userData?.kyc_status as any) === 'Pending' ? "Verification Pending" : 
                        "Verify ASAP: Action Required"}
                     </h2>
                     <p className="text-xs text-muted-foreground uppercase font-bold tracking-widest">
-                      {userData?.kycStatus === "Approved" ? "Your identity is fully validated on the protocol." : 
-                       userData?.kycStatus === "Pending" ? "Our nodes are currently auditing your identity documents." : 
+                      {(userData?.kyc_status as any) === 'Approved' ? "Your identity is fully validated on the protocol." : 
+                       (userData?.kyc_status as any) === 'Pending' ? "Our nodes are currently auditing your identity documents." : 
                        "One or more settlements are on hold. Please submit your documents to release funds."}
                     </p>
                   </div>
                 </div>
 
-                {!userData?.kycStatus && isKycRequested && (
+                {!userData?.kyc_status && isKycRequested && (
                   <div className="space-y-6 bg-black/40 p-6 rounded-2xl border border-white/5">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
@@ -1430,7 +1449,7 @@ export default function ClientDashboard() {
                <form onSubmit={handleUpdateProfile} className="space-y-6">
                   <div className="space-y-2">
                     <Label className="text-xs uppercase font-bold opacity-50 ml-1">Full Legal Name</Label>
-                    <Input name="fullName" defaultValue={userData?.fullName} className="bg-white/5 border-white/10 h-12 rounded-xl focus:ring-primary/50" />
+                    <Input name="fullName" defaultValue={userData?.full_name} className="bg-white/5 border-white/10 h-12 rounded-xl focus:ring-primary/50" />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-xs uppercase font-bold opacity-50 ml-1">Username Alias</Label>
@@ -1454,21 +1473,21 @@ export default function ClientDashboard() {
                             <Landmark className="w-5 h-5 text-primary" />
                           </div>
                           <div>
-                            <p className="text-xs font-bold uppercase text-primary">{gw.methodType}</p>
-                            <p className="text-[11px] text-white font-medium uppercase tracking-tight">{gw.accountHolderName}</p>
+                            <p className="text-xs font-bold uppercase text-primary">{gw.method_type}</p>
+                            <p className="text-[11px] text-white font-medium uppercase tracking-tight">{gw.account_holder_name}</p>
                           </div>
                         </div>
-                        <Button variant="ghost" size="icon" onClick={() => deleteDocumentNonBlocking("fiat_payment_methods", gw.id)} className="opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="ghost" size="icon" onClick={() => {}} className="opacity-0 group-hover:opacity-100 transition-opacity">
                           <Trash2 className="w-4 h-4 text-red-500" />
                         </Button>
                      </div>
                      <div className="pl-14">
-                        {gw.methodType === 'UPI' ? (
-                          <p className="text-[10px] text-muted-foreground font-mono">{gw.upiId}</p>
+                        {gw.method_type === 'UPI' ? (
+                          <p className="text-[10px] text-muted-foreground font-mono">{gw.upi_id}</p>
                         ) : (
                           <div className="flex flex-col gap-0.5">
-                             <p className="text-[10px] text-muted-foreground uppercase font-bold">{gw.bankName}</p>
-                             <p className="text-[10px] text-muted-foreground font-mono">{gw.accountNumber} • {gw.ifscSwiftCode}</p>
+                             <p className="text-[10px] text-muted-foreground uppercase font-bold">{gw.bank_name}</p>
+                             <p className="text-[10px] text-muted-foreground font-mono">{gw.account_number} • {gw.ifsc_swift_code}</p>
                           </div>
                         )}
                      </div>
@@ -1594,10 +1613,15 @@ export default function ClientDashboard() {
           <DialogContent className="glass-card border-white/10 rounded-[2rem] p-8">
             <DialogHeader><DialogTitle className="text-xl font-bold uppercase text-white">Link Payout Gateway</DialogTitle></DialogHeader>
             <div className="space-y-4 py-4">
-              <select className="w-full bg-black/60 border border-white/10 rounded-xl h-12 px-4 text-sm text-white" value={gatewayType} onChange={e => { setGatewayType(e.target.value); resetGatewayForm(); }}>
-                <option value="UPI">UPI ID</option>
-                <option value="Bank">Bank / CDM</option>
-              </select>
+              <Select value={gatewayType} onValueChange={value => { setGatewayType(value); resetGatewayForm(); }}>
+                <SelectTrigger className="w-full bg-black/60 border border-white/10 rounded-xl h-12 px-4 text-sm text-white">
+                  <SelectValue placeholder="Select Gateway Type" />
+                </SelectTrigger>
+                <SelectContent className="bg-black/95 border-white/10 text-white">
+                  <SelectItem value="UPI" className="text-xs font-black uppercase tracking-widest focus:bg-primary focus:text-white">UPI ID</SelectItem>
+                  <SelectItem value="Bank" className="text-xs font-black uppercase tracking-widest focus:bg-primary focus:text-white">Bank / CDM</SelectItem>
+                </SelectContent>
+              </Select>
               <div className="space-y-2">
                 <Label className="text-[9px] uppercase font-bold opacity-50 ml-1">Account Holder Name</Label>
                 <Input value={accountName} onChange={e => setAccountName(e.target.value)} placeholder="Full Name" className="bg-white/5 border-white/10 h-12 rounded-xl" />
@@ -1627,3 +1651,14 @@ export default function ClientDashboard() {
     </DashboardLayout>
   );
 }
+
+
+
+
+
+
+
+
+
+
+

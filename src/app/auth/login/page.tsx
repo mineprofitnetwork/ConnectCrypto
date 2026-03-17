@@ -311,7 +311,7 @@ export default function LoginPage() {
               <div className="space-y-4">
                 <div className="flex justify-between items-center px-2">
                   <Label className="text-hierarchy-label">Secure Passphrase</Label>
-                  <button type="button" className="text-[9px] font-black uppercase tracking-widest text-primary/40 hover:text-primary transition-colors">Forgot?</button>
+                  <Button type="button" variant="ghost" className="h-auto p-0 text-[9px] font-black uppercase tracking-widest text-primary/40 hover:text-primary transition-colors">Forgot?</Button>
                 </div>
                 <div className="relative group/input">
                   <Input 

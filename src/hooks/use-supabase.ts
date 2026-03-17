@@ -47,10 +47,9 @@ export function useSupabaseQuery<T>(
     // Setup Realtime subscription
     const subscription = supabase
       .channel(`${table}-changes`)
-      .on(
-        'postgres_changes',
+      .on('postgres_changes' as any,
         { event: '*', schema: 'public', table },
-        (payload: RealtimePostgresChangesPayload<T>) => {
+        (payload: RealtimePostgresChangesPayload<any>) => {
           console.log("Change detected:", payload);
           fetchData(); // Simplest way to handle updates for now
         }
@@ -96,8 +95,7 @@ export function useSupabaseDoc<T>(table: string, id: string | undefined) {
 
     const subscription = supabase
       .channel(`${table}-${id}-changes`)
-      .on(
-        'postgres_changes',
+      .on('postgres_changes' as any,
         { event: '*', schema: 'public', table, filter: `id=eq.${id}` },
         () => fetchDoc()
       )
@@ -110,3 +108,5 @@ export function useSupabaseDoc<T>(table: string, id: string | undefined) {
 
   return { data, loading, error };
 }
+
+

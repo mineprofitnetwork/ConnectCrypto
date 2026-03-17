@@ -1,5 +1,6 @@
-
 "use client";
+
+import { cn } from "@/lib/utils";
 
 import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -381,7 +382,7 @@ export default function TraderDashboard() {
       }
 
       toast({ title: "Trade Approved", description: "Funds released to client wallet." });
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
       toast({ variant: "destructive", title: "Protocol Error", description: typeof e === 'string' ? e : "Failed to release funds." });
     }
@@ -391,7 +392,7 @@ export default function TraderDashboard() {
     try {
       const { error } = await supabase.from("trade_transactions").update({ status: newStatus }).eq("id", trade.id);
       if (!error) toast({ title: "Status Updated", description: `Trade status changed to ${newStatus}.` });
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
       toast({ variant: "destructive", title: "Update Failed", description: "Failed to update trade status." });
     }
@@ -417,7 +418,7 @@ export default function TraderDashboard() {
         const { error } = await supabase.from("withdrawals").update({ status: newStatus }).eq("id", withdrawal.id);
         if (!error) toast({ title: "Status Updated", description: `Withdrawal status changed to ${newStatus}.` });
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
       toast({ variant: "destructive", title: "Update Failed", description: typeof e === 'string' ? e : "Failed to update withdrawal status." });
     }
@@ -584,12 +585,12 @@ export default function TraderDashboard() {
                   </div>
                 </Card>
               ))}
-              <button onClick={() => setIsAddOfferOpen(true)} className="border-2 border-dashed border-white/10 rounded-[2rem] min-h-[240px] flex flex-col items-center justify-center gap-5 hover:border-primary/40 hover:bg-primary/5 transition-all group duration-500 shadow-2xl">
+              <Button onClick={() => setIsAddOfferOpen(true)} variant="ghost" className="border-2 border-dashed border-white/10 rounded-[2rem] min-h-[240px] w-full flex flex-col items-center justify-center gap-5 hover:border-primary/40 hover:bg-primary/5 transition-all group duration-500 shadow-2xl">
                  <div className="w-16 h-16 bg-white/5 rounded-[1.5rem] flex items-center justify-center border border-white/5 group-hover:scale-110 group-hover:bg-primary/20 group-hover:border-primary/40 transition-all duration-500 shadow-xl">
                    <Plus className="w-8 h-8 text-white/20 group-hover:text-primary transition-colors" />
                  </div>
                  <span className="text-[10px] font-black uppercase tracking-[0.4em] text-white/20 group-hover:text-white transition-colors">Open New Position</span>
-              </button>
+              </Button>
             </div>
           ) : activeTab === "queue" ? (
              <Card className="glass-card border-none rounded-[3rem] overflow-hidden animate-in-scale">
@@ -1027,3 +1028,12 @@ export default function TraderDashboard() {
     </DashboardLayout>
   );
 }
+
+
+
+
+
+
+
+
+
