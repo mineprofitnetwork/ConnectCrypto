@@ -87,7 +87,6 @@ const LIVE_ACTIVITIES = [
 ];
 
 export default function ClientDashboard() {
-  const sidebar = <div className="hidden"></div>;
   const [activeTab, setActiveTab] = useState("marketplace");
   const [selectedTrader, setSelectedTrader] = useState<TraderOffer | null>(null);
   const [selectedNetwork, setSelectedNetwork] = useState("TRC20");
@@ -115,6 +114,8 @@ export default function ClientDashboard() {
   const { toast } = useToast();
 
   const { data: userData, loading: isUserDataLoading } = useSupabaseDoc<Profile>("profiles", user?.id);
+
+  console.log("Dashboard State:", { user, userData, isUserLoading, isUserDataLoading });
 
   const { data: marketplaceOffers, loading: isOffersLoading } = useSupabaseQuery<TraderOffer>("trader_buy_offers", {
     eq: ["status", "Active"],
@@ -309,7 +310,6 @@ export default function ClientDashboard() {
       client_id: user.id,
       client_username: userData?.username || "Guest",
       agent_id: userData?.agent_id || null, // Track agent attribution
-      agent_id: userData?.agent_id || null,
       trader_id: selectedTrader.trader_id,
       trader_username: selectedTrader.trader_username || selectedTrader.display_name || "Verified Node",
       crypto_asset_id: selectedTrader.crypto_asset_id,
