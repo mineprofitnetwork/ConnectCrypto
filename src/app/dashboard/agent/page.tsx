@@ -177,25 +177,29 @@ export default function AgentDashboard() {
   
   const { data: traderData } = useSupabaseDoc<User>("profiles", userData?.trader_id);
 
-  // Referred Users Query
-  const { data: referredUsers } = useSupabaseQuery<User>("profiles", {
-    eq: ["agent_id", user?.id],
+  // Memoize query options to prevent infinite re-render loops
+  const referredUsersQueryOptions = useMemo(() => ({
+    eq: ["agent_id", user?.id] as [string, any],
     limit: 50
-  });
+  }), [user?.id]);
 
-  // Referred Users Trades Query
-  const { data: referredTrades } = useSupabaseQuery<TradeTransaction>("trade_transactions", {
-    eq: ["agent_id", user?.id],
-    order: ["initiation_time", { ascending: false }],
+  const { data: referredUsers } = useSupabaseQuery<User>("profiles", referredUsersQueryOptions);
+
+  const referredTradesQueryOptions = useMemo(() => ({
+    eq: ["agent_id", user?.id] as [string, any],
+    order: ["initiation_time", { ascending: false }] as [string, any],
     limit: 100
-  });
+  }), [user?.id]);
 
-  // My Offers Query (Promotional Positions)
-  const { data: myOffers } = useSupabaseQuery<TraderOffer>("trader_buy_offers", {
-    eq: ["agent_id", user?.id],
-    order: ["created_at", { ascending: false }],
+  const { data: referredTrades } = useSupabaseQuery<TradeTransaction>("trade_transactions", referredTradesQueryOptions);
+
+  const myOffersQueryOptions = useMemo(() => ({
+    eq: ["agent_id", user?.id] as [string, any],
+    order: ["created_at", { ascending: false }] as [string, any],
     limit: 50
-  });
+  }), [user?.id]);
+
+  const { data: myOffers } = useSupabaseQuery<TraderOffer>("trader_buy_offers", myOffersQueryOptions);
 
   const referralLink = useMemo(() => {
     if (typeof window !== 'undefined' && userData?.referral_code) {

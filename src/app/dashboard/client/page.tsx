@@ -117,29 +117,38 @@ export default function ClientDashboard() {
 
   console.log("Dashboard State:", { user, userData, isUserLoading, isUserDataLoading });
 
-  const { data: marketplaceOffers, loading: isOffersLoading } = useSupabaseQuery<TraderOffer>("trader_buy_offers", {
-    eq: ["status", "Active"],
-    order: ["created_at", { ascending: false }],
+  // Memoize query options to prevent infinite re-render loops
+  const marketplaceQueryOptions = useMemo(() => ({
+    eq: ["status", "Active"] as [string, any],
+    order: ["created_at", { ascending: false }] as [string, any],
     limit: 50
-  });
+  }), []);
 
-  const { data: myTrades } = useSupabaseQuery<TradeTransaction>("trade_transactions", {
-    eq: ["client_id", user?.id],
-    order: ["initiation_time", { ascending: false }],
+  const { data: marketplaceOffers, loading: isOffersLoading } = useSupabaseQuery<TraderOffer>("trader_buy_offers", marketplaceQueryOptions);
+
+  const tradesQueryOptions = useMemo(() => ({
+    eq: ["client_id", user?.id] as [string, any],
+    order: ["initiation_time", { ascending: false }] as [string, any],
     limit: 100
-  });
+  }), [user?.id]);
 
-  const { data: gateways } = useSupabaseQuery<FiatPaymentMethod>("fiat_payment_methods", {
-    eq: ["user_id", user?.id],
-    order: ["created_at", { ascending: false }],
+  const { data: myTrades } = useSupabaseQuery<TradeTransaction>("trade_transactions", tradesQueryOptions);
+
+  const gatewaysQueryOptions = useMemo(() => ({
+    eq: ["user_id", user?.id] as [string, any],
+    order: ["created_at", { ascending: false }] as [string, any],
     limit: 20
-  });
+  }), [user?.id]);
 
-  const { data: myWithdrawals } = useSupabaseQuery<WithdrawalRequest>("withdrawals", {
-    eq: ["user_id", user?.id],
-    order: ["created_at", { ascending: false }],
+  const { data: gateways } = useSupabaseQuery<FiatPaymentMethod>("fiat_payment_methods", gatewaysQueryOptions);
+
+  const withdrawalsQueryOptions = useMemo(() => ({
+    eq: ["user_id", user?.id] as [string, any],
+    order: ["created_at", { ascending: false }] as [string, any],
     limit: 50
-  });
+  }), [user?.id]);
+
+  const { data: myWithdrawals } = useSupabaseQuery<WithdrawalRequest>("withdrawals", withdrawalsQueryOptions);
 
   const { data: globalSettingsData, loading: isSettingsLoading } = useSupabaseDoc<GlobalSettings>("global_settings", "default");
   const brandingSettings = globalSettingsData?.branding;
