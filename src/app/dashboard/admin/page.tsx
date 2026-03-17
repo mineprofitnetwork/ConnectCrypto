@@ -130,7 +130,22 @@ export default function AdminDashboard() {
   const [customLogoCid, setCustomLogoCid] = useState("");
   const [isBrandingUpdating, setIsBrandingUpdating] = useState(false);
 
-  const { data: userData, loading: isUserDataLoading } = useSupabaseDoc<Profile>("profiles", user?.id);
+  const { data: userData, loading: isUserDataLoading, error: userDataError } = useSupabaseDoc<Profile>("profiles", user?.id);
+
+  useEffect(() => {
+    if (userDataError) {
+      console.error("Error loading admin profile:", userDataError);
+      if (user) {
+        toast({ 
+          variant: "destructive", 
+          title: "Profile Error", 
+          description: "Could not load your profile. Please try logging in again." 
+        });
+      }
+    }
+  }, [userDataError, user, toast]);
+
+  console.log("Dashboard State:", { user, userData, isUserLoading, isUserDataLoading, userDataError });
 
   const { data: globalSettings } = useSupabaseDoc<GlobalSettings>("global_settings", "default");
 
@@ -616,7 +631,7 @@ export default function AdminDashboard() {
     { id: "transactions", label: "Global Ledger", icon: CreditCard },
     { id: "withdrawals", label: "Withdrawals", icon: ArrowUpRight },
     { id: "offers", label: "Market Positions", icon: LayoutDashboard },
-    { id: "branding", label: "Branding", icon: Settings },
+ 
     { id: "support", label: "Support", icon: Headset }
   ];
 

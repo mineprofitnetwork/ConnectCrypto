@@ -16,30 +16,57 @@ export function useSupabaseQuery<T>(
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    // Robust check for missing ID or filter values
+    const hasFilter = !!queryOptions.eq;
+    const filterValue = queryOptions.eq?.[1];
+    const isFilterValueMissing = filterValue === undefined || filterValue === null || filterValue === 'undefined' || filterValue === '';
+
+    if (hasFilter && isFilterValueMissing) {
+      console.log(`[useSupabaseQuery] Missing filter value for table ${table}, skipping query.`);
+      setData(null);
+      setLoading(false);
+      return;
+    }
+
     async function fetchData() {
       setLoading(true);
-      let query = supabase.from(table).select(queryOptions.select || '*');
+      try {
+        let query = supabase.from(table).select(queryOptions.select || '*');
 
-      if (queryOptions.eq) {
-        query = query.eq(queryOptions.eq[0], queryOptions.eq[1]);
+        if (queryOptions.eq) {
+          // Double check before calling .eq
+          const val = queryOptions.eq[1];
+          if (val === undefined || val === null || val === 'undefined') {
+            console.warn(`[useSupabaseQuery] Attempted to query ${table} with undefined value in .eq filter.`);
+            setData(null);
+            setLoading(false);
+            return;
+          }
+          query = query.eq(queryOptions.eq[0], val);
+        }
+
+        if (queryOptions.order) {
+          query = query.order(queryOptions.order[0], queryOptions.order[1]);
+        }
+
+        if (queryOptions.limit) {
+          query = query.limit(queryOptions.limit);
+        }
+
+        const { data: result, error: fetchError } = await query;
+
+        if (fetchError) {
+          console.error(`[useSupabaseQuery] Error fetching ${table}:`, fetchError);
+          setError(fetchError);
+        } else {
+          setData(result as T[]);
+        }
+      } catch (err: any) {
+        console.error(`[useSupabaseQuery] Unexpected error fetching ${table}:`, err);
+        setError(err);
+      } finally {
+        setLoading(false);
       }
-
-      if (queryOptions.order) {
-        query = query.order(queryOptions.order[0], queryOptions.order[1]);
-      }
-
-      if (queryOptions.limit) {
-        query = query.limit(queryOptions.limit);
-      }
-
-      const { data: result, error: fetchError } = await query;
-
-      if (fetchError) {
-        setError(fetchError);
-      } else {
-        setData(result as T[]);
-      }
-      setLoading(false);
     }
 
     fetchData();
@@ -70,25 +97,33 @@ export function useSupabaseDoc<T>(table: string, id: string | undefined) {
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    if (!id) {
+    if (!id || id === 'undefined') {
+      console.log(`[useSupabaseDoc] Missing ID for table ${table}, skipping fetch.`);
       setLoading(false);
       return;
     }
 
     async function fetchDoc() {
       setLoading(true);
-      const { data: result, error: fetchError } = await supabase
-        .from(table)
-        .select('*')
-        .eq('id', id)
-        .single();
+      try {
+        const { data: result, error: fetchError } = await supabase
+          .from(table)
+          .select('*')
+          .eq('id', id)
+          .single();
 
-      if (fetchError) {
-        setError(fetchError);
-      } else {
-        setData(result as T);
+        if (fetchError) {
+          console.error(`[useSupabaseDoc] Error fetching ${table} document ${id}:`, fetchError);
+          setError(fetchError);
+        } else {
+          setData(result as T);
+        }
+      } catch (err: any) {
+        console.error(`[useSupabaseDoc] Unexpected error fetching ${table} document ${id}:`, err);
+        setError(err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
 
     fetchDoc();

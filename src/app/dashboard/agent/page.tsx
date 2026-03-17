@@ -173,7 +173,22 @@ export default function AgentDashboard() {
   const { data: globalSettings } = useSupabaseDoc<GlobalSettings>("global_settings", "default");
   const brandingSettings = globalSettings?.branding;
 
-  const { data: userData, loading: isUserDataLoading } = useSupabaseDoc<User>("profiles", user?.id);
+  const { data: userData, loading: isUserDataLoading, error: userDataError } = useSupabaseDoc<User>("profiles", user?.id);
+  
+  useEffect(() => {
+    if (userDataError) {
+      console.error("Error loading agent profile:", userDataError);
+      if (user) {
+        toast({ 
+          variant: "destructive", 
+          title: "Profile Error", 
+          description: "Could not load your profile. Please try logging in again." 
+        });
+      }
+    }
+  }, [userDataError, user, toast]);
+
+  console.log("Dashboard State:", { user, userData, isUserLoading, isUserDataLoading, userDataError });
   
   const { data: traderData } = useSupabaseDoc<User>("profiles", userData?.trader_id);
 

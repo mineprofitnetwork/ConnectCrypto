@@ -65,6 +65,8 @@ export default function TraderDashboard() {
   const { toast } = useToast();
   const { user, loading: isUserLoading, signOut } = useSupabaseAuth();
 
+  const { data: userData, loading: isUserDataLoading, error: userDataError } = useSupabaseDoc<Profile>("profiles", user?.id);
+
   const [activeTab, setActiveTab] = useState("offers");
   const [isAddOfferOpen, setIsAddOfferOpen] = useState(false);
   const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false);
@@ -96,7 +98,20 @@ export default function TraderDashboard() {
     { id: "trust", label: "Trust", icon: ShieldCheck }
   ];
 
-  const { data: userData, loading: isUserDataLoading } = useSupabaseDoc<Profile>("profiles", user?.id);
+  useEffect(() => {
+    if (userDataError) {
+      console.error("Error loading trader profile:", userDataError);
+      if (user) {
+        toast({ 
+          variant: "destructive", 
+          title: "Profile Error", 
+          description: "Could not load your profile. Please try logging in again." 
+        });
+      }
+    }
+  }, [userDataError, user, toast]);
+
+  console.log("Dashboard State:", { user, userData, isUserLoading, isUserDataLoading, userDataError });
 
   const { data: pendingTrades } = useSupabaseQuery<TradeTransaction>("trade_transactions", {
     select: "*",

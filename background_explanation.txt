@@ -1,0 +1,60 @@
+
+# ConnectCrypto Background System Explanation (Stars & Moon)
+
+This document provides the exact technical specifications for the "Galaxy Background" used in the ConnectCrypto application. This system creates a high-end, futuristic "space" aesthetic with a dynamic starfield and a detailed lunar surface.
+
+## 1. Core Background Layer (`GalaxyBackground.tsx`)
+
+The background is a fixed-position system (`fixed inset-0 z-[-1]`) that sits behind all application content.
+
+- **Base Color:** Deepest black/grey (`bg-[#050505]`).
+- **Interactive Guard:** `pointer-events-none` ensures the background never interferes with clicks.
+- **Ambient Glow:** A large, soft radial gradient in the center:
+    - Size: `800px` x `800px`
+    - Color: `bg-primary/5` (Subtle purple/brand color)
+    - Effect: `blur-[150px]` and `opacity-10`
+    - Purpose: Provides a sense of depth and "atmosphere" to the void.
+
+## 2. Dynamic Starfield System
+
+The stars are generated dynamically on the client-side to ensure variety and avoid hydration issues.
+
+- **Quantity:** 30 stars.
+- **Distribution:** Randomly positioned using `top` and `left` percentages (0% to 100%).
+- **Star Sizing:**
+    - Small (80% of stars): `w-0.5 h-0.5` (approx 2px)
+    - Medium (20% of stars): `w-1 h-1` (approx 4px)
+- **Visuals:** Pure white (`bg-white`), circular (`rounded-full`).
+- **Animation (Twinkle Effect):**
+    - Each star has a random `opacity` between 0.1 and 0.5.
+    - Each star has a random animation `duration` (3s to 8s) and `delay` (0s to 5s).
+    - **Keyframes:** A `pulse` animation that cycles opacity (e.g., from 0.1 to 0.4 and back) using `cubic-bezier(0.4, 0, 0.6, 1)`.
+
+## 3. Lunar Surface Protocol (The "Moon")
+
+The bottom of the screen features a complex, layered CSS-only representation of a moon's surface.
+
+### A. Main Lunar Curve
+- **Shape:** An oversized oval (`w-[120%] h-[400px]`) positioned at the bottom-left (`bottom-[-150px] left-[-10%]`).
+- **Styling:** `rounded-[100%]`.
+- **Gradient:** `bg-gradient-to-t from-[#151515] via-[#0a0a0a] to-transparent`.
+- **Atmospheric Edge:** A subtle top border (`border-t border-white/5`) and a faint outer glow (`shadow-[0_-20px_50px_rgba(255,255,255,0.02)]`) create a sharp horizon line against the stars.
+
+### B. Surface Texture (Craters)
+Three distinct elliptical shapes represent craters to add realism:
+1. **Left Crater:** Small, tilted (-12°), highly blurred (`blur-md`), dark (`bg-black/40`).
+2. **Center Crater:** Large, horizontal, deeply blurred (`blur-lg`), faint (`bg-black/30`).
+3. **Right Crater:** Medium, tilted (6°), sharpest blur (`blur-sm`), darkest (`bg-black/50`).
+- **Note:** All craters have a very faint border (`border-white/5`) to catch "light."
+
+### C. Atmospheric Layers
+- **Distant Hills:** A dark gradient (`bg-gradient-to-t from-black to-transparent`) at the very bottom adds a sense of layered terrain.
+- **Surface Glow:** A final purple-tinted gradient (`bg-gradient-to-t from-primary/5 to-transparent`) at 20% opacity mimics a thin lunar atmosphere or reflected brand light.
+
+## 4. Implementation Logic
+
+To achieve 100% parity:
+1.  **Fixed Positioning:** Background must be `fixed` and `z-[-1]`.
+2.  **Randomization:** Stars must be generated with `Math.random()` for position and animation timing.
+3.  **CSS Layering:** Use absolute positioning and `z-index` (implicit in DOM order) to layer the Hills -> Curve -> Craters -> Glow.
+4.  **Tailwind Utility Classes:** The design relies on specific Tailwind blur (`blur-md`, `blur-lg`, `blur-[150px]`) and opacity values to maintain the "institutional" look.

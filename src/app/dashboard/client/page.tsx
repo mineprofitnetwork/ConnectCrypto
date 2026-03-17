@@ -113,9 +113,23 @@ export default function ClientDashboard() {
   const router = useRouter();
   const { toast } = useToast();
 
-  const { data: userData, loading: isUserDataLoading } = useSupabaseDoc<Profile>("profiles", user?.id);
+  const { data: userData, loading: isUserDataLoading, error: userDataError } = useSupabaseDoc<Profile>("profiles", user?.id);
 
-  console.log("Dashboard State:", { user, userData, isUserLoading, isUserDataLoading });
+  useEffect(() => {
+    if (userDataError) {
+      console.error("Error loading user profile:", userDataError);
+      // If we can't load the profile, something is wrong with the session or the user record
+      if (user) {
+        toast({ 
+          variant: "destructive", 
+          title: "Profile Error", 
+          description: "Could not load your profile. Please try logging in again." 
+        });
+      }
+    }
+  }, [userDataError, user, toast]);
+
+  console.log("Dashboard State:", { user, userData, isUserLoading, isUserDataLoading, userDataError });
 
   // Memoize query options to prevent infinite re-render loops
   const marketplaceQueryOptions = useMemo(() => ({
